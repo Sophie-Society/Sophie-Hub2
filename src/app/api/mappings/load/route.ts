@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { LoadMappingResponse } from '@/types/enrichment'
+import { createLogger } from '@/lib/logger'
 
-// Use singleton Supabase client
-const supabase = getAdminClient()
+const log = createLogger('api:mappings:load')
 
 // GET - Load field mappings (admin only)
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const { searchParams } = new URL(request.url)
@@ -17,10 +20,7 @@ export async function GET(request: NextRequest) {
     const dataSourceId = searchParams.get('data_source_id')
 
     if (!spreadsheetId && !dataSourceId) {
-      return NextResponse.json(
-        { error: 'Either spreadsheet_id or data_source_id is required' },
-        { status: 400 }
-      )
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Either spreadsheet_id or data_source_id is required', 400)
     }
 
     // Find the data source
@@ -35,10 +35,7 @@ export async function GET(request: NextRequest) {
     const { data: dataSource, error: sourceError } = await query.single()
 
     if (sourceError || !dataSource) {
-      return NextResponse.json(
-        { error: 'Data source not found', found: false },
-        { status: 404 }
-      )
+      return apiError(ErrorCodes.NOT_FOUND, 'Data source not found', 404)
     }
 
     // Load tab mappings with their column mappings and patterns
@@ -98,14 +95,11 @@ export async function GET(request: NextRequest) {
       tabMappings: tabsWithDetails,
     }
 
-    return NextResponse.json(response, {
-      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+    return apiSuccess(response, 200, {
+      'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
     })
-  } catch (error) {
-    console.error('Error loading mapping:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+  } catch (error: unknown) {
+    log.error('Error loading mapping', error)
+    return ApiErrors.database(error instanceof Error ? error.message : 'Unknown error')
   }
 }

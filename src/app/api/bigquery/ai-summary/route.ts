@@ -5,19 +5,20 @@
  * Steps: validate input -> fetch BigQuery data -> send to Anthropic API -> return summary.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes, apiValidationError } from '@/lib/api/response'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { BIGQUERY } from '@/lib/constants'
 import { VIEW_ALIASES } from '@/types/modules'
 import { COLUMN_METADATA } from '@/lib/bigquery/column-metadata'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:ai-summary')
 
 // Server-side cache (10 min TTL)
 const SERVER_CACHE_TTL = 10 * 60 * 1000
@@ -118,7 +119,7 @@ function getDateFilter(dateRange: z.infer<typeof DateRangeSchema>): { startDate?
   return { startDate: undefined, endDate: undefined }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -145,18 +146,19 @@ export async function POST(request: NextRequest) {
     // Resolve view
     const viewName = resolveViewName(view)
     if (!viewName) {
-      return apiError('NOT_FOUND', `Unknown view: "${view}"`, 404)
+      return apiError(ErrorCodes.NOT_FOUND, `Unknown view: "${view}"`, 404)
     }
 
     // Validate columns
     const allowed = ALLOWED_COLUMNS[viewName]
     for (const col of metrics) {
       if (!allowed?.includes(col)) {
-        return apiError('VALIDATION_ERROR', `Column "${col}" is not allowed for view "${view}"`, 400)
+        return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${col}" is not allowed for view "${view}"`, 400)
       }
     }
 
     // Look up partner's BigQuery client identifier
+    const supabase = getAdminClient()
     const { data: mapping, error: mappingError } = await supabase
       .from('entity_external_ids')
       .select('external_id')
@@ -267,8 +269,8 @@ Do not mention BigQuery or the data source. Speak as if this is the partner's Am
     serverCache.set(cacheKey, { data: responseData, timestamp: Date.now() })
 
     return apiSuccess(responseData, 200, rateLimitHeaders(rateLimit))
-  } catch (error) {
-    console.error('[ai-summary] Error:', error instanceof Error ? error.message : error)
-    return ApiErrors.internal('Failed to generate AI summary')
+  } catch (error: unknown) {
+    log.error('AI summary generation failed', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }

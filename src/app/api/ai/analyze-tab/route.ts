@@ -1,10 +1,13 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { hasSystemSetting, getAnthropicApiKey } from '@/lib/settings'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:analyze-tab')
 
 // =============================================================================
 // Validation Schema
@@ -103,7 +106,7 @@ const ANALYZE_TAB_TOOL: Anthropic.Tool = {
 // POST /api/ai/analyze-tab
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify({
         success: false,
         error: {
-          code: 'RATE_LIMIT_EXCEEDED',
+          code: ErrorCodes.RATE_LIMITED,
           message: `Too many analysis requests. Please wait ${Math.ceil(rateLimitResult.resetIn / 1000)} seconds.`,
         },
       }),
@@ -122,7 +125,7 @@ export async function POST(request: NextRequest) {
         status: 429,
         headers: { 'Content-Type': 'application/json', ...rateLimitHeaders(rateLimitResult) },
       }
-    )
+    ) as unknown as NextResponse
   }
 
   try {
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
     const hasDbKey = await hasSystemSetting('anthropic_api_key')
     if (!hasDbKey && !process.env.ANTHROPIC_API_KEY) {
       return apiError(
-        'SERVICE_UNAVAILABLE',
+        ErrorCodes.INTERNAL_ERROR,
         'AI not configured. Add Anthropic API key in Settings → API Keys.',
         503
       )
@@ -218,7 +221,7 @@ Provide a high-level summary using the summarize_tab tool. Focus on WHAT this ta
     )
 
     if (!toolUse || toolUse.name !== 'summarize_tab') {
-      return apiError('INTERNAL_ERROR', 'AI did not provide valid summary', 500)
+      return apiError(ErrorCodes.INTERNAL_ERROR, 'AI did not provide valid summary', 500)
     }
 
     const summary = toolUse.input as {
@@ -237,10 +240,10 @@ Provide a high-level summary using the summarize_tab tool. Focus on WHAT this ta
     }
 
     return apiSuccess({ summary })
-  } catch (error) {
-    console.error('AI tab analysis error:', error)
+  } catch (error: unknown) {
+    log.error('AI tab analysis error:', error)
     if (error instanceof Error && error.message.includes('API key')) {
-      return apiError('SERVICE_UNAVAILABLE', 'AI service authentication failed', 503)
+      return apiError(ErrorCodes.INTERNAL_ERROR, 'AI service authentication failed', 503)
     }
     return ApiErrors.internal()
   }

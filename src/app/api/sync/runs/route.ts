@@ -1,9 +1,11 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:sync:runs')
 
 // Query params validation
 const QuerySchema = z.object({
@@ -36,9 +38,11 @@ const QuerySchema = z.object({
  *   }
  * }
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const { searchParams } = new URL(request.url)
@@ -106,7 +110,7 @@ export async function GET(request: Request) {
     const { data: runs, error, count } = await query
 
     if (error) {
-      console.error('Error fetching sync runs:', error)
+      log.error('Error fetching sync runs', error)
       return ApiErrors.database(error.message)
     }
 
@@ -115,8 +119,8 @@ export async function GET(request: Request) {
       total: count || 0,
       has_more: (count || 0) > offset + limit,
     })
-  } catch (error) {
-    console.error('Error in GET /api/sync/runs:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/sync/runs', error)
     return ApiErrors.internal()
   }
 }

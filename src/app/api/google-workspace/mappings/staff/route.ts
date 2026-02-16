@@ -1,30 +1,33 @@
 /**
  * GET/POST/DELETE /api/google-workspace/mappings/staff
  *
- * CRUD for staff ↔ Google Workspace user mappings via entity_external_ids.
+ * CRUD for staff <-> Google Workspace user mappings via entity_external_ids.
  *
  * - GET: List current mappings (google_workspace_user source)
  * - POST: Create/update a manual mapping
  * - DELETE: Remove a mapping
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
 import {
   refreshGoogleWorkspaceStaffApprovalQueue,
   resolveGoogleWorkspaceApprovalByUserId,
 } from '@/lib/google-workspace/staff-approval-queue'
 
+const log = createLogger('api:gws:staff-mappings')
+
 // =============================================================================
 // GET — List all staff-Google Workspace mappings
 // =============================================================================
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -41,7 +44,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Failed to fetch GWS mappings:', error)
+      log.error('Failed to fetch GWS mappings', error)
       return ApiErrors.database()
     }
 
@@ -71,8 +74,8 @@ export async function GET() {
     })
 
     return apiSuccess({ mappings: enriched, count: enriched.length })
-  } catch (error) {
-    console.error('GWS mappings GET error:', error)
+  } catch (error: unknown) {
+    log.error('GWS mappings GET error', error)
     return ApiErrors.internal()
   }
 }
@@ -90,7 +93,7 @@ const CreateMappingSchema = z.object({
   is_admin: z.boolean().optional(),
 })
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -129,7 +132,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Failed to create GWS mapping:', error)
+      log.error('Failed to create GWS mapping', error)
       if (error.code === '23505') {
         return ApiErrors.conflict('This Google user is already mapped to another staff member')
       }
@@ -138,15 +141,15 @@ export async function POST(request: NextRequest) {
 
     try {
       await resolveGoogleWorkspaceApprovalByUserId(google_user_id)
-    } catch (queueError) {
-      console.error('Failed to resolve staff approval candidate:', queueError)
+    } catch (queueError: unknown) {
+      log.error('Failed to resolve staff approval candidate', queueError)
     }
 
     invalidateDirectoryUsersCache()
 
     return apiSuccess({ mapping: data }, 201)
-  } catch (error) {
-    console.error('GWS mapping POST error:', error)
+  } catch (error: unknown) {
+    log.error('GWS mapping POST error', error)
     return ApiErrors.internal()
   }
 }
@@ -159,7 +162,7 @@ const DeleteMappingSchema = z.object({
   google_user_id: z.string().min(1, 'google_user_id is required'),
 })
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -183,7 +186,7 @@ export async function DELETE(request: NextRequest) {
       .eq('external_id', google_user_id)
 
     if (error) {
-      console.error('Failed to delete GWS mapping:', error)
+      log.error('Failed to delete GWS mapping', error)
       return ApiErrors.database()
     }
 
@@ -197,21 +200,21 @@ export async function DELETE(request: NextRequest) {
       .eq('metadata->>google_user_id', google_user_id)
 
     if (aliasError) {
-      console.error('Failed to clean up alias mappings:', aliasError)
+      log.error('Failed to clean up alias mappings', aliasError)
       // Non-fatal — user mapping was already deleted
     }
 
     try {
       await refreshGoogleWorkspaceStaffApprovalQueue()
-    } catch (queueError) {
-      console.error('Failed to refresh staff approval queue after delete:', queueError)
+    } catch (queueError: unknown) {
+      log.error('Failed to refresh staff approval queue after delete', queueError)
     }
 
     invalidateDirectoryUsersCache()
 
     return apiSuccess({ deleted: true })
-  } catch (error) {
-    console.error('GWS mapping DELETE error:', error)
+  } catch (error: unknown) {
+    log.error('GWS mapping DELETE error', error)
     return ApiErrors.internal()
   }
 }

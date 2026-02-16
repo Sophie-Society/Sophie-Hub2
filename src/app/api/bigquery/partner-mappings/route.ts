@@ -1,17 +1,18 @@
 /**
  * GET/POST/DELETE /api/bigquery/partner-mappings
  *
- * Manages BigQuery client_name → partner mappings in entity_external_ids table.
+ * Manages BigQuery client_name -> partner mappings in entity_external_ids table.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { invalidateClientNamesCache } from '@/lib/connectors/bigquery-cache'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:partner-mappings')
 
 // Zod schema for creating/updating mappings
 const CreateMappingSchema = z.object({
@@ -22,13 +23,15 @@ const CreateMappingSchema = z.object({
 /**
  * GET - Fetch all BigQuery partner mappings with partner details
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')
     if (!authResult.authenticated) {
       return authResult.response
     }
+
+    const supabase = getAdminClient()
 
     // Get all BigQuery mappings joined with partner info
     const { data: mappings, error } = await supabase
@@ -46,7 +49,7 @@ export async function GET() {
       .order('external_id')
 
     if (error) {
-      console.error('Error fetching mappings:', error)
+      log.error('Error fetching mappings', error)
       return ApiErrors.database()
     }
 
@@ -85,18 +88,16 @@ export async function GET() {
     })
     response.headers.set('Cache-Control', 'private, max-age=60') // 1 min cache
     return response
-  } catch (error) {
-    console.error('GET partner-mappings error:', error)
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to fetch mappings'
-    )
+  } catch (error: unknown) {
+    log.error('GET partner-mappings failed', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }
 
 /**
  * POST - Create or update a BigQuery partner mapping
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { partner_id, client_name } = validation.data
+    const supabase = getAdminClient()
 
     // Check if partner exists
     const { data: partner, error: partnerError } = await supabase
@@ -137,7 +139,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
 
     if (existingError) {
-      console.error('Error fetching existing BigQuery mapping:', existingError)
+      log.error('Error fetching existing BigQuery mapping', existingError)
       return ApiErrors.database()
     }
 
@@ -150,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
 
     let mapping: Record<string, unknown> | null = null
-    let error: { code?: string; message: string } | null = null
+    let dbError: { code?: string; message: string } | null = null
 
     if (existingRows && existingRows.length > 0) {
       const { data: updated, error: updateError } = await supabase
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       mapping = updated as Record<string, unknown>
-      error = updateError ? { code: updateError.code, message: updateError.message } : null
+      dbError = updateError ? { code: updateError.code, message: updateError.message } : null
     } else {
       const { data: inserted, error: insertError } = await supabase
         .from('entity_external_ids')
@@ -168,18 +170,18 @@ export async function POST(request: NextRequest) {
         .select()
         .single()
       mapping = inserted as Record<string, unknown>
-      error = insertError ? { code: insertError.code, message: insertError.message } : null
+      dbError = insertError ? { code: insertError.code, message: insertError.message } : null
     }
 
-    if (error) {
-      if (error.code === '23505') {
+    if (dbError) {
+      if (dbError.code === '23505') {
         return apiError(
-          'CONFLICT',
+          ErrorCodes.CONFLICT,
           `Client name "${client_name}" is already mapped to another partner`,
           409
         )
       }
-      console.error('Error saving mapping:', error)
+      log.error('Error saving mapping', dbError)
       return ApiErrors.database()
     }
 
@@ -192,18 +194,16 @@ export async function POST(request: NextRequest) {
         partner_name: partner.brand_name
       }
     }, 201)
-  } catch (error) {
-    console.error('POST partner-mappings error:', error)
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to save mapping'
-    )
+  } catch (error: unknown) {
+    log.error('POST partner-mappings failed', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }
 
 /**
  * DELETE - Remove a BigQuery partner mapping
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')
@@ -215,9 +215,10 @@ export async function DELETE(request: NextRequest) {
     const mappingId = searchParams.get('id')
 
     if (!mappingId) {
-      return apiError('VALIDATION_ERROR', 'Mapping ID is required', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Mapping ID is required', 400)
     }
 
+    const supabase = getAdminClient()
     const { error } = await supabase
       .from('entity_external_ids')
       .delete()
@@ -225,7 +226,7 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'bigquery') // Safety: only delete BigQuery mappings
 
     if (error) {
-      console.error('Error deleting mapping:', error)
+      log.error('Error deleting mapping', error)
       return ApiErrors.database()
     }
 
@@ -233,10 +234,8 @@ export async function DELETE(request: NextRequest) {
     invalidateClientNamesCache()
 
     return apiSuccess({ deleted: true })
-  } catch (error) {
-    console.error('DELETE partner-mappings error:', error)
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to delete mapping'
-    )
+  } catch (error: unknown) {
+    log.error('DELETE partner-mappings failed', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }

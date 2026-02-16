@@ -13,16 +13,19 @@
  * @see src/docs/SLACK-ROLLOUT-PLAN.md §2.4 for architecture
  */
 
-import { NextRequest } from 'next/server'
-import { apiSuccess, apiError } from '@/lib/api/response'
+import { NextRequest, NextResponse } from 'next/server'
+import { apiSuccess, apiError, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { processChunk } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
 
-export async function POST(request: NextRequest) {
+const log = createLogger('api:cron:slack-sync')
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Verify cron secret
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return apiError('UNAUTHORIZED', 'Invalid cron secret', 401)
+    return apiError(ErrorCodes.UNAUTHORIZED, 'Invalid cron secret', 401)
   }
 
   const startTime = Date.now()
@@ -40,8 +43,8 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (runError) {
-      console.error('Slack sync cron: error finding active run:', runError)
-      return apiError('DATABASE_ERROR', 'Failed to find active sync run', 500)
+      log.error('Error finding active run', runError)
+      return apiError(ErrorCodes.DATABASE_ERROR, 'Failed to find active sync run', 500)
     }
 
     if (!activeRun) {
@@ -49,13 +52,13 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ status: 'no_active_run', duration_ms: Date.now() - startTime })
     }
 
-    console.log(`Slack sync cron: processing chunk for run ${activeRun.id} (status: ${activeRun.status})`)
+    log.info(`Processing chunk for run ${activeRun.id} (status: ${activeRun.status})`)
 
     const summary = await processChunk(activeRun.id)
     const durationMs = Date.now() - startTime
 
-    console.log(
-      `Slack sync cron: chunk complete in ${durationMs}ms — ` +
+    log.info(
+      `Chunk complete in ${durationMs}ms — ` +
       `${summary.channels_synced} synced, ${summary.channels_failed} failed, ` +
       `${summary.total_messages} messages`
     )
@@ -67,12 +70,12 @@ export async function POST(request: NextRequest) {
       total_messages: summary.total_messages,
       duration_ms: durationMs,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     const durationMs = Date.now() - startTime
-    console.error(`Slack sync cron: failed after ${durationMs}ms:`, error)
+    log.error(`Failed after ${durationMs}ms`, error)
 
     return apiError(
-      'INTERNAL_ERROR',
+      ErrorCodes.INTERNAL_ERROR,
       `Sync cron failed: ${error instanceof Error ? error.message : String(error)}`,
       500
     )

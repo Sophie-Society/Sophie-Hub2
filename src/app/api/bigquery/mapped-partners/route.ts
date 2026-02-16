@@ -5,17 +5,21 @@
  * Lightweight endpoint for the dashboard partner picker.
  */
 
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:mapped-partners')
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
+
     // Fetch all BigQuery mappings
     const { data: mappings, error: mappingError } = await supabase
       .from('entity_external_ids')
@@ -60,7 +64,8 @@ export async function GET() {
       .sort((a, b) => a.brand_name.localeCompare(b.brand_name))
 
     return apiSuccess({ partners: result })
-  } catch {
+  } catch (error: unknown) {
+    log.error('Failed to fetch mapped partners', error instanceof Error ? error.message : error)
     return ApiErrors.internal()
   }
 }

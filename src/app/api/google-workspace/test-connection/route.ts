@@ -5,12 +5,16 @@
  * Returns workspace domain and approximate user count.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 import { testConnection } from '@/lib/google-workspace/client'
 
-export async function POST() {
+const log = createLogger('api:gws:test-connection')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -31,8 +35,9 @@ export async function POST() {
       domain: info.domain,
       user_count: info.userCount,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Connection failed'
+    log.warn('Google Workspace connection test failed', { message: msg })
 
     // Provide specific guidance for common errors
     let hint = ''
@@ -49,6 +54,6 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   return ApiErrors.notFound('Use POST method')
 }

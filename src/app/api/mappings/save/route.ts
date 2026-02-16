@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -7,13 +7,13 @@ import { SaveMappingSchemaV2 } from '@/lib/validations/schemas'
 import { DEFAULT_WEEKLY_PATTERN } from '@/types/enrichment'
 import { getConnectorRegistry } from '@/lib/connectors'
 import { audit } from '@/lib/audit'
+import { createLogger } from '@/lib/logger'
 
-// Use singleton Supabase client
-const supabase = getAdminClient()
+const log = createLogger('api:mappings:save')
 
 // POST - Save field mappings (admin only)
 // Supports both legacy format { spreadsheet_id } and new format { type, connection_config }
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
   if (!rateLimit.allowed) {
     return ApiErrors.rateLimited('Too many mapping saves. Please wait before trying again.')
   }
+
+  const supabase = getAdminClient()
 
   try {
     const body = await request.json()
@@ -288,7 +290,7 @@ export async function POST(request: NextRequest) {
             .insert(tagInserts)
 
           if (tagError) {
-            console.error('Error saving column mapping tags:', tagError)
+            log.warn('Error saving column mapping tags', tagError)
             // Don't fail the whole save for tags
           }
         }
@@ -339,7 +341,7 @@ export async function POST(request: NextRequest) {
           })
 
         if (error) {
-          console.error('Error saving computed field:', error)
+          log.error('Error saving computed field', error)
         } else {
           computedFieldsCount++
         }
@@ -369,8 +371,8 @@ export async function POST(request: NextRequest) {
       patterns_count: patternsCount,
       computed_fields_count: computedFieldsCount,
     })
-  } catch (error) {
-    console.error('Error saving mapping:', error)
+  } catch (error: unknown) {
+    log.error('Error saving mapping', error)
     return ApiErrors.database(error instanceof Error ? error.message : 'Failed to save mapping')
   }
 }

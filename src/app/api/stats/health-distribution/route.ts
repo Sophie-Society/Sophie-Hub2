@@ -1,7 +1,11 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { BUCKET_COLORS, BUCKET_LABELS, STATUS_BUCKETS, type StatusColorBucket } from '@/lib/status-colors'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:stats:health')
 
 interface StatusMapping {
   status_pattern: string
@@ -115,7 +119,7 @@ function getLatestWeeklyStatus(
  * GET /api/stats/health-distribution
  * Returns partner count distribution across health buckets
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authResult = await requireAuth()
   if (!authResult.authenticated) return authResult.response
 
@@ -132,7 +136,7 @@ export async function GET() {
       .order('priority', { ascending: false })
 
     if (mappingsError) {
-      console.warn('status_color_mappings table not available, using fallback:', mappingsError.message)
+      logger.warn('status_color_mappings table not available, using fallback', mappingsError.message)
       mappings = getFallbackMappings()
     } else {
       mappings = dbMappings || getFallbackMappings()
@@ -212,8 +216,8 @@ export async function GET() {
       unmappedStatuses: unmapped.slice(0, 10), // Top 10 unmapped
       lastCalculated: new Date().toISOString(),
     })
-  } catch (error) {
-    console.error('Health distribution fetch error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to fetch health distribution', 500)
+  } catch (error: unknown) {
+    logger.error('Health distribution fetch error', error)
+    return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to fetch health distribution', 500)
   }
 }

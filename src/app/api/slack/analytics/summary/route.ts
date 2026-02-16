@@ -7,12 +7,15 @@
  * Default: last 30 days.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:summary')
 
 const QuerySchema = z.object({
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -20,7 +23,7 @@ const QuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(365).optional(),
 })
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest) {
       .lte('date', dateTo)
 
     if (error) {
-      console.error('Error fetching analytics summary:', error)
+      log.error('Error fetching analytics summary:', error)
       return ApiErrors.database()
     }
 
@@ -178,8 +181,8 @@ export async function GET(request: NextRequest) {
       active_channels: activeChannels,
       pod_leader_leaderboard: leaderboard,
     })
-  } catch (error) {
-    console.error('GET analytics/summary error:', error)
+  } catch (error: unknown) {
+    log.error('GET analytics/summary error:', error)
     return ApiErrors.internal()
   }
 }

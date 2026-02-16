@@ -1,11 +1,14 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { hasSystemSetting, getAnthropicApiKey } from '@/lib/settings'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
 import { getSchemaDescription } from '@/lib/entity-fields'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:analyze-source')
 
 // =============================================================================
 // Validation Schema
@@ -89,7 +92,7 @@ const ANALYZE_SOURCE_TOOL: Anthropic.Tool = {
 // POST /api/ai/analyze-source
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -100,7 +103,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify({
         success: false,
         error: {
-          code: 'RATE_LIMIT_EXCEEDED',
+          code: ErrorCodes.RATE_LIMITED,
           message: `Too many analysis requests. Please wait ${Math.ceil(rateLimitResult.resetIn / 1000)} seconds.`,
         },
       }),
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest) {
         status: 429,
         headers: { 'Content-Type': 'application/json', ...rateLimitHeaders(rateLimitResult) },
       }
-    )
+    ) as unknown as NextResponse
   }
 
   try {
@@ -124,7 +127,7 @@ export async function POST(request: NextRequest) {
     const hasDbKey = await hasSystemSetting('anthropic_api_key')
     if (!hasDbKey && !process.env.ANTHROPIC_API_KEY) {
       return apiError(
-        'SERVICE_UNAVAILABLE',
+        ErrorCodes.INTERNAL_ERROR,
         'AI not configured. Add Anthropic API key in Settings → API Keys.',
         503
       )
@@ -180,7 +183,7 @@ Determine the primary entity type and provide a mapping strategy.`
     )
 
     if (!toolUse || toolUse.name !== 'analyze_data_source') {
-      return apiError('INTERNAL_ERROR', 'AI did not provide valid analysis', 500)
+      return apiError(ErrorCodes.INTERNAL_ERROR, 'AI did not provide valid analysis', 500)
     }
 
     const analysis = toolUse.input as {
@@ -194,10 +197,10 @@ Determine the primary entity type and provide a mapping strategy.`
     }
 
     return apiSuccess({ analysis })
-  } catch (error) {
-    console.error('AI analysis error:', error)
+  } catch (error: unknown) {
+    log.error('AI analysis error:', error)
     if (error instanceof Error && error.message.includes('API key')) {
-      return apiError('SERVICE_UNAVAILABLE', 'AI service authentication failed', 503)
+      return apiError(ErrorCodes.INTERNAL_ERROR, 'AI service authentication failed', 503)
     }
     return ApiErrors.internal()
   }

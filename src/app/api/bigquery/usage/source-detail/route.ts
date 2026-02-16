@@ -7,13 +7,16 @@
  * Admin-only. Cached for 1 hour.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { BIGQUERY } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
 import type { SourceDetailEntry } from '@/types/usage'
+
+const log = createLogger('api:bigquery:usage-detail')
 
 const VALID_PERIODS = ['7d', '30d', '90d'] as const
 type Period = (typeof VALID_PERIODS)[number]
@@ -43,7 +46,7 @@ const SOURCE_CASE = `
   END
 `
 
-/** Map source name → SQL WHERE condition for filtering */
+/** Map source name -> SQL WHERE condition for filtering */
 function sourceToCondition(source: Source): string | null {
   switch (source) {
     case 'All':
@@ -89,7 +92,7 @@ function periodToDays(period: Period): number {
 const detailCache = new Map<string, { data: SourceDetailEntry[]; timestamp: number }>()
 const CACHE_TTL = 60 * 60 * 1000
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -97,10 +100,10 @@ export async function GET(request: NextRequest) {
   const period = (request.nextUrl.searchParams.get('period') || '30d') as Period
 
   if (!source || !VALID_SOURCES.includes(source)) {
-    return apiError('VALIDATION_ERROR', `Invalid source. Use one of: ${VALID_SOURCES.join(', ')}`, 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, `Invalid source. Use one of: ${VALID_SOURCES.join(', ')}`, 400)
   }
   if (!VALID_PERIODS.includes(period)) {
-    return apiError('VALIDATION_ERROR', 'Invalid period. Use 7d, 30d, or 90d.', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Invalid period. Use 7d, 30d, or 90d.', 400)
   }
 
   // Check cache
@@ -182,9 +185,8 @@ export async function GET(request: NextRequest) {
 
     detailCache.set(cacheKey, { data: entries, timestamp: Date.now() })
     return apiSuccess({ source, period, entries })
-  } catch (error) {
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to fetch source detail'
-    )
+  } catch (error: unknown) {
+    log.error('Failed to fetch source detail', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }

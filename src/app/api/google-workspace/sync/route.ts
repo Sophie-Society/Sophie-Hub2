@@ -13,9 +13,10 @@
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { NextResponse } from 'next/server'
-import { apiSuccess, ApiErrors } from '@/lib/api/response'
-import { checkRateLimit, RATE_LIMITS, rateLimitHeaders } from '@/lib/rate-limit'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import { googleWorkspaceConnector } from '@/lib/connectors/google-workspace'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
 import type { GoogleDirectoryUser } from '@/lib/google-workspace/types'
@@ -23,12 +24,14 @@ import type { DirectoryDriftEvent } from '@/lib/google-workspace/types'
 import { refreshGoogleWorkspaceStaffApprovalQueue } from '@/lib/google-workspace/staff-approval-queue'
 import { SYNC } from '@/lib/constants'
 
+const log = createLogger('api:gws:sync')
+
 function isSnapshotSchemaError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -37,15 +40,10 @@ export async function POST() {
   // Rate limit: 2 syncs per 5 minutes per user
   const rateCheck = checkRateLimit(auth.user.id, 'gws:sync', RATE_LIMITS.ADMIN_HEAVY)
   if (!rateCheck.allowed) {
-    return NextResponse.json(
-      { success: false, error: { code: 'RATE_LIMITED', message: 'Too many sync requests. Try again later.' } },
-      {
-        status: 429,
-        headers: {
-          ...rateLimitHeaders(rateCheck),
-          'Retry-After': Math.ceil(rateCheck.resetIn / 1000).toString(),
-        },
-      }
+    return apiError(
+      ErrorCodes.RATE_LIMITED,
+      'Too many sync requests. Try again later.',
+      429,
     )
   }
 
@@ -67,9 +65,9 @@ export async function POST() {
         includeSuspended: true,
         includeDeleted: false, // Google's deleted-user API has a 20-day window; we handle tombstones locally
       })
-    } catch (error) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Directory pull failed'
-      console.error('Directory sync: API pull failed:', msg)
+      log.error('Directory sync: API pull failed', { message: msg })
       return apiSuccess({
         success: false,
         error: `Directory pull failed: ${msg}. No changes applied.`,
@@ -90,7 +88,7 @@ export async function POST() {
           tombstoned: 0,
         })
       }
-      console.error('Directory sync: failed to read existing snapshot:', existingSnapshotError)
+      log.error('Directory sync: failed to read existing snapshot', existingSnapshotError)
       return ApiErrors.database()
     }
 
@@ -191,7 +189,7 @@ export async function POST() {
             tombstoned: 0,
           })
         }
-        console.error(`Batch upsert failed (offset ${i}):`, error)
+        log.error(`Batch upsert failed (offset ${i})`, error)
       } else {
         upserted += batch.length
       }
@@ -231,8 +229,8 @@ export async function POST() {
       staff_approvals_queue: approvalQueueSync,
       completed_at: now,
     })
-  } catch (error) {
-    console.error('Directory sync error:', error)
+  } catch (error: unknown) {
+    log.error('Directory sync error', error)
     return ApiErrors.internal()
   }
 }

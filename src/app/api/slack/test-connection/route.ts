@@ -4,12 +4,13 @@
  * Verify Slack bot token and return workspace info.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { testConnection } from '@/lib/slack/client'
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -22,7 +23,7 @@ export async function POST() {
       workspace_name: info.workspace_name,
       bot_user_id: info.bot_user_id,
     })
-  } catch (error) {
+  } catch (error: unknown) {
     return apiSuccess({
       connected: false,
       error: error instanceof Error ? error.message : 'Connection failed',
@@ -30,6 +31,6 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   return ApiErrors.notFound('Use POST method')
 }

@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { STATUS_BUCKETS } from '@/lib/status-colors'
+import { createLogger } from '@/lib/logger'
+import { ErrorCodes } from '@/lib/api/response'
 
-const supabase = getAdminClient()
+const logger = createLogger('api:stats:tables')
 
 /**
  * Get the latest weekly status from partner source_data
@@ -66,11 +68,13 @@ function isActiveStatus(status: string | null): boolean {
   return false
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
+
     // Get all partners with source_data to calculate active count
     // Note: Supabase defaults to 1000 rows, explicitly set higher limit
     const [partnersResult, staffResult] = await Promise.all([
@@ -118,10 +122,10 @@ export async function GET() {
         'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
       },
     })
-  } catch (error) {
-    console.error('Error fetching table stats:', error)
+  } catch (error: unknown) {
+    logger.error('Error fetching table stats', error)
     return NextResponse.json(
-      { error: 'Failed to fetch stats' },
+      { success: false, error: { code: ErrorCodes.INTERNAL_ERROR, message: 'Failed to fetch stats' } },
       { status: 500 }
     )
   }

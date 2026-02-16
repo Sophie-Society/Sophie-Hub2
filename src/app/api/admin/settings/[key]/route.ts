@@ -1,9 +1,13 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { getAdminClient } from '@/lib/supabase/admin'
 import { encrypt, decrypt, maskValue } from '@/lib/encryption'
-import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+import * as adminRepo from '@/lib/repositories/admin.repository'
+
+const log = createLogger('api:admin:settings:key')
 
 interface RouteContext {
   params: Promise<{ key: string }>
@@ -13,7 +17,7 @@ interface RouteContext {
  * PUT /api/admin/settings/[key]
  * Update or create a system setting (admin only)
  */
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -24,9 +28,8 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const { key } = await context.params
 
-  // Validate key format
   if (!key || !/^[a-z_]+$/.test(key)) {
-    return apiError('VALIDATION_ERROR', 'Invalid setting key format', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Invalid setting key format', 400)
   }
 
   try {
@@ -34,54 +37,27 @@ export async function PUT(request: Request, context: RouteContext) {
     const { value } = body
 
     if (!value || typeof value !== 'string') {
-      return apiError('VALIDATION_ERROR', 'Value is required', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Value is required', 400)
     }
 
-    // Encrypt the value before storing
     let encryptedValue: string
     try {
       encryptedValue = encrypt(value)
-    } catch (encryptError) {
-      console.error('Encryption failed:', encryptError)
-      return apiError(
-        'ENCRYPTION_ERROR',
-        'Encryption failed. Ensure ENCRYPTION_KEY is configured.',
-        500
-      )
+    } catch (encryptError: unknown) {
+      log.error('Encryption failed', encryptError)
+      return apiError(ErrorCodes.INTERNAL_ERROR, 'Encryption failed. Ensure ENCRYPTION_KEY is configured.', 500)
     }
 
-    const supabase = getAdminClient()
-
-    // Upsert the setting
-    const { data, error } = await supabase
-      .from('system_settings')
-      .upsert(
-        {
-          key,
-          value: encryptedValue,
-          encrypted: true,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'key',
-        }
-      )
-      .select('key, value, updated_at')
-      .single()
-
-    if (error) {
-      console.error('Failed to save setting:', error)
-      return ApiErrors.database(error.message)
-    }
+    await adminRepo.upsertSetting(key, encryptedValue, true, authResult.user.email || 'admin')
 
     return apiSuccess({
-      key: data.key,
+      key,
       masked_value: maskValue(value),
-      updated_at: data.updated_at,
+      updated_at: new Date().toISOString(),
     })
-  } catch (error) {
-    console.error('Settings update error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to update setting', 500)
+  } catch (error: unknown) {
+    log.error('Settings update error', error)
+    return ApiErrors.internal()
   }
 }
 
@@ -89,7 +65,7 @@ export async function PUT(request: Request, context: RouteContext) {
  * DELETE /api/admin/settings/[key]
  * Remove a system setting (admin only)
  */
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(_request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -101,79 +77,57 @@ export async function DELETE(request: Request, context: RouteContext) {
   const { key } = await context.params
 
   if (!key) {
-    return apiError('VALIDATION_ERROR', 'Key is required', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Key is required', 400)
   }
 
   try {
-    const supabase = getAdminClient()
-
-    const { error } = await supabase
-      .from('system_settings')
-      .delete()
-      .eq('key', key)
-
-    if (error) {
-      console.error('Failed to delete setting:', error)
-      return ApiErrors.database(error.message)
-    }
-
+    await adminRepo.deleteSetting(key)
     return apiSuccess({ deleted: true })
-  } catch (error) {
-    console.error('Settings delete error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to delete setting', 500)
+  } catch (error: unknown) {
+    log.error('Settings delete error', error)
+    return ApiErrors.internal()
   }
 }
 
 /**
  * GET /api/admin/settings/[key]
- * Get decrypted value for a specific setting (admin only, for internal use)
+ * Get decrypted value for a specific setting (admin only)
  */
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(_request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
   const { key } = await context.params
 
   if (!key) {
-    return apiError('VALIDATION_ERROR', 'Key is required', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Key is required', 400)
   }
 
   try {
-    const supabase = getAdminClient()
+    const setting = await adminRepo.findSettingByKey(key)
 
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('key, value, encrypted, description, updated_at')
-      .eq('key', key)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return ApiErrors.notFound('Setting')
-      }
-      console.error('Failed to fetch setting:', error)
-      return ApiErrors.database(error.message)
+    if (!setting) {
+      return ApiErrors.notFound('Setting')
     }
 
-    // Decrypt if encrypted
-    let decryptedValue = data.value
-    if (data.encrypted && data.value) {
+    let decryptedValue = setting.value
+    if (setting.encrypted && setting.value) {
       try {
-        decryptedValue = decrypt(data.value)
-      } catch (decryptError) {
-        console.error('Decryption failed:', decryptError)
-        return apiError('DECRYPTION_ERROR', 'Failed to decrypt setting', 500)
+        decryptedValue = decrypt(setting.value)
+      } catch (decryptError: unknown) {
+        log.error('Decryption failed', decryptError)
+        return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to decrypt setting', 500)
       }
     }
 
     return apiSuccess({
-      key: data.key,
+      key: setting.key,
       value: decryptedValue,
-      description: data.description,
-      updated_at: data.updated_at,
+      description: setting.description,
+      updated_at: setting.updated_at,
     })
-  } catch (error) {
-    console.error('Settings fetch error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to fetch setting', 500)
+  } catch (error: unknown) {
+    log.error('Settings fetch error', error)
+    return ApiErrors.internal()
   }
 }

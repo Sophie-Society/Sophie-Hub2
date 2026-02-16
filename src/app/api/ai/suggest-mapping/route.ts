@@ -1,11 +1,14 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { getMappingAssistant, type ColumnInput, type MappingContext } from '@/lib/ai/mapping-sdk'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { hasSystemSetting } from '@/lib/settings'
 import { audit } from '@/lib/audit'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:suggest-mapping')
 
 // =============================================================================
 // Validation Schema
@@ -37,30 +40,7 @@ const AI_RATE_LIMIT = {
 // POST /api/ai/suggest-mapping
 // =============================================================================
 
-/**
- * Get AI suggestion for a single column mapping.
- *
- * Request body:
- * {
- *   column_name: string
- *   sample_values: string[]
- *   sibling_columns: string[]
- *   position?: number
- * }
- *
- * Response:
- * {
- *   suggestion: {
- *     category: 'partner' | 'staff' | 'asin' | 'weekly' | 'computed' | 'skip'
- *     target_field: string | null
- *     confidence: number
- *     reasoning: string
- *     is_key: boolean
- *     authority: 'source_of_truth' | 'reference'
- *   }
- * }
- */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Require data-enrichment:write permission
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
@@ -72,7 +52,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify({
         success: false,
         error: {
-          code: 'RATE_LIMIT_EXCEEDED',
+          code: ErrorCodes.RATE_LIMITED,
           message: `Too many AI requests. Please wait ${Math.ceil(rateLimitResult.resetIn / 1000)} seconds.`,
         },
       }),
@@ -83,7 +63,7 @@ export async function POST(request: NextRequest) {
           ...rateLimitHeaders(rateLimitResult),
         },
       }
-    )
+    ) as unknown as NextResponse
   }
 
   try {
@@ -101,7 +81,7 @@ export async function POST(request: NextRequest) {
     const hasDbKey = await hasSystemSetting('anthropic_api_key')
     if (!hasDbKey && !process.env.ANTHROPIC_API_KEY) {
       return apiError(
-        'SERVICE_UNAVAILABLE',
+        ErrorCodes.INTERNAL_ERROR,
         'AI mapping assistant is not configured. Add your Anthropic API key in Settings → API Keys.',
         503
       )
@@ -150,16 +130,16 @@ export async function POST(request: NextRequest) {
         authority: suggestion.authority,
       },
     })
-  } catch (error) {
-    console.error('AI suggestion error:', error)
+  } catch (error: unknown) {
+    log.error('AI suggestion error:', error)
 
     // Check for specific Anthropic errors
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
-        return apiError('SERVICE_UNAVAILABLE', 'AI service authentication failed', 503)
+        return apiError(ErrorCodes.INTERNAL_ERROR, 'AI service authentication failed', 503)
       }
       if (error.message.includes('rate limit')) {
-        return apiError('RATE_LIMIT_EXCEEDED', 'AI service rate limit exceeded', 429)
+        return apiError(ErrorCodes.RATE_LIMITED, 'AI service rate limit exceeded', 429)
       }
     }
 

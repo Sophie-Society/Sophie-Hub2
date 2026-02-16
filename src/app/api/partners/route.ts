@@ -1,13 +1,13 @@
-import { getAdminClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors, ErrorCodes, apiValidationError } from '@/lib/api/response'
-import { escapePostgrestValue } from '@/lib/api/search-utils'
-import { computePartnerStatus, matchesStatusFilter } from '@/lib/partners/computed-status'
+import { apiSuccess, apiValidationError, ApiErrors, ErrorCodes, apiError } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 import { checkRateLimit, RATE_LIMITS, rateLimitHeaders } from '@/lib/rate-limit'
+import * as partnerService from '@/lib/services/partner.service'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:partners')
 
 const QuerySchema = z.object({
   search: z.string().max(200).optional(),
@@ -21,23 +21,12 @@ const QuerySchema = z.object({
 
 /**
  * GET /api/partners
- *
  * List partners with search, filter, sort, and pagination.
- *
- * Query params:
- * - search: string - Search brand_name, client_name, partner_code
- * - status: string - Comma-separated status filter (active,onboarding,churned)
- * - tier: string - Comma-separated tier filter
- * - sort: 'brand_name' | 'created_at' | 'tier' | 'onboarding_date'
- * - order: 'asc' | 'desc'
- * - limit: number (1-100, default 50)
- * - offset: number (default 0)
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
-  // Rate limit: 30 requests/minute per user
   const rateLimit = checkRateLimit(auth.user.id, 'partners:list', RATE_LIMITS.PARTNERS_LIST)
   if (!rateLimit.allowed) {
     return ApiErrors.rateLimited('Too many requests. Please wait before fetching partners again.')
@@ -62,142 +51,33 @@ export async function GET(request: Request) {
 
     const { search, status, tier, sort, order, limit, offset } = validation.data
 
-    // Parse status filter values
     const statusFilters = status
       ? status.split(',').map(s => s.trim()).filter(Boolean)
-      : []
+      : undefined
+    const tierFilters = tier
+      ? tier.split(',').map(t => t.trim()).filter(Boolean)
+      : undefined
 
-    // Query 1: Partners - select ALL columns including source_data
-    // Note: Status filtering is done in JS based on computed status from weekly data
-    let query = supabase
-      .from('partners')
-      .select('*')
-
-    // Search across brand_name, client_name, partner_code
-    if (search) {
-      const escaped = escapePostgrestValue(search)
-      query = query.or(
-        `brand_name.ilike.%${escaped}%,client_name.ilike.%${escaped}%,partner_code.ilike.%${escaped}%`
-      )
-    }
-
-    // Filter by tier (DB-level filter is fine for tier)
-    if (tier) {
-      const tiers = tier.split(',').map(t => t.trim()).filter(Boolean)
-      query = query.in('tier', tiers)
-    }
-
-    // Sort
-    query = query.order(sort, { ascending: order === 'asc' })
-
-    // Supabase defaults to 1000 rows max - explicitly set higher limit to get all partners
-    // We paginate in JS after filtering, so we need all rows for accurate filtering
-    query = query.limit(5000)
-
-    const { data: allPartners, error } = await query
-
-    // Debug: log how many partners returned from Supabase
-    console.log(`[partners API] Supabase returned ${allPartners?.length || 0} partners`)
-
-    if (error) {
-      console.error('Error fetching partners:', error)
-      return ApiErrors.database()
-    }
-
-    // Compute status for each partner and apply status filter
-    let filteredPartners = (allPartners || []).map(p => {
-      const computed = computePartnerStatus(p.source_data, p.status)
-      return {
-        ...p,
-        computed_status: computed.computedStatus,
-        computed_status_label: computed.displayLabel,
-        computed_status_bucket: computed.bucket,
-        latest_weekly_status: computed.latestWeeklyStatus,
-        status_matches: computed.matchesSheetStatus,
-        weeks_without_data: computed.weeksWithoutData,
-      }
+    const result = await partnerService.listPartners({
+      search,
+      statusFilters,
+      tier: tierFilters,
+      sort,
+      order,
+      limit,
+      offset,
     })
 
-    // Apply status filter based on computed status
-    if (statusFilters.length > 0) {
-      filteredPartners = filteredPartners.filter(p =>
-        matchesStatusFilter(p.source_data, p.status, statusFilters)
-      )
-    }
-
-    // Apply pagination after filtering
-    const total = filteredPartners.length
-    const paginatedPartners = filteredPartners.slice(offset, offset + limit)
-
-    // Query 2: Batch fetch staff assignments for paginated partners (pod_leaders + sales_reps)
-    const partnerIds = paginatedPartners.map(p => p.id)
-    const podLeaders: Record<string, { id: string; full_name: string }> = {}
-    const salesReps: Record<string, { id: string; full_name: string }> = {}
-
-    if (partnerIds.length > 0) {
-      const { data: assignments } = await supabase
-        .from('partner_assignments')
-        .select('partner_id, assignment_role, staff:staff_id(id, full_name)')
-        .in('partner_id', partnerIds)
-        .in('assignment_role', ['pod_leader', 'sales_rep'])
-        .is('unassigned_at', null)
-
-      if (assignments) {
-        for (const a of assignments) {
-          const staff = a.staff as unknown as { id: string; full_name: string } | null
-          if (staff) {
-            if (a.assignment_role === 'pod_leader') {
-              podLeaders[a.partner_id] = staff
-            } else if (a.assignment_role === 'sales_rep') {
-              salesReps[a.partner_id] = staff
-            }
-          }
-        }
-      }
-    }
-
-    // Query 3: Batch fetch BigQuery mappings from entity_external_ids
-    const bigqueryMappings: Record<string, string> = {}
-
-    if (partnerIds.length > 0) {
-      const { data: bqMappings } = await supabase
-        .from('entity_external_ids')
-        .select('entity_id, external_id')
-        .eq('entity_type', 'partners')
-        .eq('source', 'bigquery')
-        .in('entity_id', partnerIds)
-
-      if (bqMappings) {
-        for (const m of bqMappings) {
-          bigqueryMappings[m.entity_id] = m.external_id
-        }
-      }
-    }
-
-    // Merge staff assignments and BigQuery status into results
-    const partnersWithLeaders = paginatedPartners.map(p => ({
-      ...p,
-      pod_leader: podLeaders[p.id] || null,
-      sales_rep: salesReps[p.id] || null,
-      has_bigquery: !!bigqueryMappings[p.id],
-      bigquery_client_name: bigqueryMappings[p.id] || null,
-    }))
-
-    return apiSuccess({
-      partners: partnersWithLeaders,
-      total,
-      has_more: total > offset + limit,
-    }, 200, {
+    return apiSuccess(result, 200, {
       'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
       ...rateLimitHeaders(rateLimit),
     })
-  } catch (error) {
-    console.error('Error in GET /api/partners:', error)
+  } catch (error: unknown) {
+    log.error('Failed to list partners', error)
     return ApiErrors.internal()
   }
 }
 
-// Schema for creating a new partner
 const CreatePartnerSchema = z.object({
   brand_name: z.string().min(1, 'Brand name is required').max(200),
   client_name: z.string().max(200).optional(),
@@ -210,7 +90,7 @@ const CreatePartnerSchema = z.object({
  * POST /api/partners
  * Create a new partner (admin only)
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -222,39 +102,15 @@ export async function POST(request: Request) {
       return apiValidationError(validation.error)
     }
 
-    const { brand_name, client_name, client_email, status, tier } = validation.data
+    const result = await partnerService.createPartner(validation.data)
 
-    // Check if partner with same brand_name already exists
-    const { data: existing } = await supabase
-      .from('partners')
-      .select('id')
-      .ilike('brand_name', brand_name)
-      .maybeSingle()
-
-    if (existing) {
-      return apiError('DUPLICATE', `Partner "${brand_name}" already exists`, 409)
+    if (result.duplicate) {
+      return apiError(ErrorCodes.CONFLICT, `Partner "${validation.data.brand_name}" already exists`, 409)
     }
 
-    const { data: partner, error } = await supabase
-      .from('partners')
-      .insert({
-        brand_name,
-        client_name: client_name || null,
-        client_email: client_email || null,
-        status,
-        tier: tier || null,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Failed to create partner:', error)
-      return ApiErrors.database()
-    }
-
-    return apiSuccess({ partner }, 201)
-  } catch (error) {
-    console.error('Error in POST /api/partners:', error)
+    return apiSuccess({ partner: result.partner }, 201)
+  } catch (error: unknown) {
+    log.error('Failed to create partner', error)
     return ApiErrors.internal()
   }
 }

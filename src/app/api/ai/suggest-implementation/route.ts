@@ -1,12 +1,15 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ErrorCodes } from '@/lib/api/response'
 import { getAnthropicApiKey } from '@/lib/settings'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { getCodebaseContextForFeature, formatContextForPrompt } from '@/lib/ai/codebase-context'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:suggest-implementation')
 
 const RequestSchema = z.object({
   feedbackId: z.string().uuid('Invalid feedback ID'),
@@ -33,7 +36,7 @@ interface ImplementationSuggestion {
  * POST /api/ai/suggest-implementation
  * Generate implementation suggestions for a feature request
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth check - admin only
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json()
   } catch {
-    return apiError('INVALID_JSON', 'Invalid JSON in request body', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Invalid JSON in request body', 400)
   }
 
   const validation = RequestSchema.safeParse(body)
@@ -61,7 +64,7 @@ export async function POST(request: NextRequest) {
     anthropicKey = await getAnthropicApiKey()
   } catch {
     return apiError(
-      'SERVICE_UNAVAILABLE',
+      ErrorCodes.INTERNAL_ERROR,
       'AI analysis is not configured. Add your Anthropic API key in Settings → API Keys.',
       503
     )
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (feedbackError || !feedback) {
-    return apiError('NOT_FOUND', 'Feedback item not found', 404)
+    return apiError(ErrorCodes.NOT_FOUND, 'Feedback item not found', 404)
   }
 
   // Build context for Claude
@@ -205,8 +208,8 @@ Respond with a JSON object matching this structure:
     return apiSuccess({
       suggestion,
     })
-  } catch (error) {
-    console.error('Claude API error:', error)
-    return apiError('AI_ERROR', 'Failed to generate implementation suggestion. Please try again.', 500)
+  } catch (error: unknown) {
+    log.error('Claude API error:', error)
+    return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to generate implementation suggestion. Please try again.', 500)
   }
 }

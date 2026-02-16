@@ -6,12 +6,15 @@
  * Returns metrics joined with partner/staff names.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:response-times')
 
 const QuerySchema = z.object({
   partner_id: z.string().uuid().optional(),
@@ -20,7 +23,7 @@ const QuerySchema = z.object({
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date_to must be YYYY-MM-DD'),
 })
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
     const { data: metrics, error } = await query
 
     if (error) {
-      console.error('Error fetching response time metrics:', error)
+      log.error('Error fetching response time metrics:', error)
       return ApiErrors.database()
     }
 
@@ -101,8 +104,8 @@ export async function GET(request: NextRequest) {
       count: enriched.length,
       date_range: { from: date_from, to: date_to },
     })
-  } catch (error) {
-    console.error('GET analytics/response-times error:', error)
+  } catch (error: unknown) {
+    log.error('GET analytics/response-times error:', error)
     return ApiErrors.internal()
   }
 }

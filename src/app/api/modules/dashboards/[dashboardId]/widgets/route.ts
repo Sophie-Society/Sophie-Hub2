@@ -6,14 +6,12 @@
  * DELETE: Remove a widget (admin only)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, apiValidationError, ErrorCodes } from '@/lib/api/response'
 import { z } from 'zod'
-
-const supabase = getAdminClient()
 
 function checkConfigSize(config: Record<string, unknown>): boolean {
   try {
@@ -48,11 +46,12 @@ const CreateWidgetSchema = z.object({
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { dashboardId } = await params
     const body = await request.json()
     const validation = CreateWidgetSchema.safeParse(body)
@@ -61,10 +60,10 @@ export async function POST(
     }
 
     if (!checkConfigSize(validation.data.config)) {
-      return apiError('VALIDATION_ERROR', 'Widget config exceeds maximum size (10KB)', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Widget config exceeds maximum size (10KB)', 400)
     }
     if (maxDepth(validation.data.config) > 3) {
-      return apiError('VALIDATION_ERROR', 'Widget config nesting too deep (max 3 levels)', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Widget config nesting too deep (max 3 levels)', 400)
     }
 
     // Verify section belongs to this dashboard
@@ -76,7 +75,7 @@ export async function POST(
       .maybeSingle()
 
     if (!section) {
-      return apiError('NOT_FOUND', 'Section not found in this dashboard', 404)
+      return apiError(ErrorCodes.NOT_FOUND, 'Section not found in this dashboard', 404)
     }
 
     // Auto-assign sort_order if not provided
@@ -131,11 +130,12 @@ const UpdateWidgetSchema = z.object({
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { dashboardId } = await params
     const body = await request.json()
     const validation = UpdateWidgetSchema.safeParse(body)
@@ -145,10 +145,10 @@ export async function PATCH(
 
     if (validation.data.config) {
       if (!checkConfigSize(validation.data.config)) {
-        return apiError('VALIDATION_ERROR', 'Widget config exceeds maximum size (10KB)', 400)
+        return apiError(ErrorCodes.VALIDATION_ERROR, 'Widget config exceeds maximum size (10KB)', 400)
       }
       if (maxDepth(validation.data.config) > 3) {
-        return apiError('VALIDATION_ERROR', 'Widget config nesting too deep (max 3 levels)', 400)
+        return apiError(ErrorCodes.VALIDATION_ERROR, 'Widget config nesting too deep (max 3 levels)', 400)
       }
     }
 
@@ -180,11 +180,12 @@ const DeleteWidgetSchema = z.object({
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { dashboardId } = await params
     const body = await request.json()
     const validation = DeleteWidgetSchema.safeParse(body)

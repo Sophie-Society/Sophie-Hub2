@@ -1,9 +1,13 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes, apiValidationError } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 import { invalidateMappingsCache } from '@/lib/status-colors/cache'
+
+const log = createLogger('api:admin:status-mappings:id')
 
 const VALID_BUCKETS = ['healthy', 'onboarding', 'warning', 'paused', 'offboarding', 'churned'] as const
 
@@ -22,7 +26,7 @@ interface RouteContext {
  * PUT /api/admin/status-mappings/[id]
  * Updates a status color mapping (admin only)
  */
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -38,7 +42,6 @@ export async function PUT(request: Request, context: RouteContext) {
     const updates = validation.data
     const supabase = getAdminClient()
 
-    // Get existing mapping
     const { data: existing, error: fetchError } = await supabase
       .from('status_color_mappings')
       .select('*')
@@ -49,7 +52,6 @@ export async function PUT(request: Request, context: RouteContext) {
       return ApiErrors.notFound('Status mapping')
     }
 
-    // System defaults: only allow toggling is_active
     if (existing.is_system_default) {
       const allowedUpdates: Record<string, unknown> = {}
       if (updates.is_active !== undefined) {
@@ -57,7 +59,7 @@ export async function PUT(request: Request, context: RouteContext) {
       }
 
       if (Object.keys(allowedUpdates).length === 0) {
-        return apiError('FORBIDDEN', 'System default mappings can only have their active status toggled', 403)
+        return apiError(ErrorCodes.FORBIDDEN, 'System default mappings can only have their active status toggled', 403)
       }
 
       const { data: mapping, error } = await supabase
@@ -68,16 +70,13 @@ export async function PUT(request: Request, context: RouteContext) {
         .single()
 
       if (error) {
-        return ApiErrors.database(error.message)
+        return ApiErrors.database()
       }
 
-      // Invalidate cache so changes take effect
       invalidateMappingsCache()
-
       return apiSuccess({ mapping })
     }
 
-    // Check for duplicate pattern if changing
     if (updates.status_pattern && updates.status_pattern !== existing.status_pattern) {
       const { data: duplicate } = await supabase
         .from('status_color_mappings')
@@ -87,7 +86,7 @@ export async function PUT(request: Request, context: RouteContext) {
         .maybeSingle()
 
       if (duplicate) {
-        return apiError('DUPLICATE', `Pattern "${updates.status_pattern}" already exists`, 409)
+        return apiError(ErrorCodes.CONFLICT, `Pattern "${updates.status_pattern}" already exists`, 409)
       }
     }
 
@@ -99,16 +98,14 @@ export async function PUT(request: Request, context: RouteContext) {
       .single()
 
     if (error) {
-      return ApiErrors.database(error.message)
+      return ApiErrors.database()
     }
 
-    // Invalidate cache so changes take effect
     invalidateMappingsCache()
-
     return apiSuccess({ mapping })
-  } catch (error) {
-    console.error('Status mapping update error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to update status mapping', 500)
+  } catch (error: unknown) {
+    log.error('Status mapping update error', error)
+    return ApiErrors.internal()
   }
 }
 
@@ -116,7 +113,7 @@ export async function PUT(request: Request, context: RouteContext) {
  * DELETE /api/admin/status-mappings/[id]
  * Deletes a status color mapping (admin only, not system defaults)
  */
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(_request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -124,7 +121,6 @@ export async function DELETE(request: Request, context: RouteContext) {
     const { id } = await context.params
     const supabase = getAdminClient()
 
-    // Get existing mapping
     const { data: existing, error: fetchError } = await supabase
       .from('status_color_mappings')
       .select('*')
@@ -135,9 +131,8 @@ export async function DELETE(request: Request, context: RouteContext) {
       return ApiErrors.notFound('Status mapping')
     }
 
-    // Cannot delete system defaults
     if (existing.is_system_default) {
-      return apiError('FORBIDDEN', 'System default mappings cannot be deleted. You can deactivate them instead.', 403)
+      return apiError(ErrorCodes.FORBIDDEN, 'System default mappings cannot be deleted. You can deactivate them instead.', 403)
     }
 
     const { error } = await supabase
@@ -146,15 +141,13 @@ export async function DELETE(request: Request, context: RouteContext) {
       .eq('id', id)
 
     if (error) {
-      return ApiErrors.database(error.message)
+      return ApiErrors.database()
     }
 
-    // Invalidate cache so deletion takes effect
     invalidateMappingsCache()
-
     return apiSuccess({ deleted: true })
-  } catch (error) {
-    console.error('Status mapping deletion error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to delete status mapping', 500)
+  } catch (error: unknown) {
+    log.error('Status mapping deletion error', error)
+    return ApiErrors.internal()
   }
 }

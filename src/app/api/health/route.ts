@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:health')
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy'
@@ -21,7 +24,7 @@ interface HealthStatus {
  * Returns 200 if healthy, 503 if unhealthy
  * No authentication required (needed for external health checks)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const health: HealthStatus = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -59,8 +62,8 @@ export async function GET() {
         latencyMs: dbLatency,
       }
     }
-  } catch (error) {
-    console.error('Health check failed:', error)
+  } catch (error: unknown) {
+    log.error('Health check failed:', error)
     health.checks.database = {
       status: 'down',
       error: 'Database check failed',

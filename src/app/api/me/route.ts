@@ -7,7 +7,7 @@ import { getPermissionsForRole } from '@/lib/auth/roles'
  * Returns the current user's info including role and permissions.
  * Used by frontend for role-based UI rendering.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

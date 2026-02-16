@@ -2,24 +2,28 @@
  * POST /api/google-workspace/mappings/staff/auto-match
  *
  * Bulk auto-match staff to Google Workspace users:
- * 1. Primary email match → creates google_workspace_user mapping (auto-transfer OK)
- * 2. Alias email match → returned as suggestions only (no auto-transfer)
- * 3. Remaining → unmatched lists
+ * 1. Primary email match -> creates google_workspace_user mapping (auto-transfer OK)
+ * 2. Alias email match -> returned as suggestions only (no auto-transfer)
+ * 3. Remaining -> unmatched lists
  *
  * Per approved plan: aliases are suggestion-only, never auto-transferred.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
 import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
 import { isStaffEligibleForAutoMapping } from '@/lib/staff/lifecycle'
 import { refreshGoogleWorkspaceStaffApprovalQueue } from '@/lib/google-workspace/staff-approval-queue'
 
-export async function POST() {
+const log = createLogger('api:gws:auto-match')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -34,7 +38,7 @@ export async function POST() {
       .select('*')
 
     if (dirError) {
-      console.error('Failed to fetch directory snapshot:', dirError)
+      log.error('Failed to fetch directory snapshot', dirError)
       return ApiErrors.database()
     }
 
@@ -67,7 +71,7 @@ export async function POST() {
       .not('email', 'is', null)
 
     if (staffError) {
-      console.error('Failed to fetch staff:', staffError)
+      log.error('Failed to fetch staff', staffError)
       return ApiErrors.database()
     }
 
@@ -230,7 +234,7 @@ export async function POST() {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`GWS auto-match batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`GWS auto-match batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
@@ -280,8 +284,8 @@ export async function POST() {
       staff_approval_candidates: staffApprovalCandidates.slice(0, 50),
       staff_approvals_queue: approvalQueueSync,
     })
-  } catch (error) {
-    console.error('GWS staff auto-match error:', error)
+  } catch (error: unknown) {
+    log.error('GWS staff auto-match error', error)
     return ApiErrors.internal()
   }
 }

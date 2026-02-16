@@ -7,10 +7,12 @@
  * Returns all users including suspended/deleted for admin visibility.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import {
   getCachedDirectoryUsers,
   setCachedDirectoryUsers,
@@ -19,6 +21,8 @@ import {
   setDirectoryUsersRefreshInProgress,
 } from '@/lib/connectors/google-workspace-cache'
 import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
+
+const log = createLogger('api:gws:users')
 
 /** Snapshot row without raw_profile — used for browser-facing responses */
 type DirectoryUserRow = Omit<DirectorySnapshotRow, 'raw_profile'>
@@ -49,14 +53,14 @@ async function fetchSnapshotUsers(): Promise<DirectoryUserRow[]> {
       // First-run or schema drift: treat as empty snapshot so UI can guide operator to sync.
       return []
     }
-    console.error('Failed to fetch directory snapshot:', error)
+    log.error('Failed to fetch directory snapshot', error)
     throw error
   }
 
   return (data || []) as unknown as DirectoryUserRow[]
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -71,7 +75,7 @@ export async function GET() {
         setDirectoryUsersRefreshInProgress(true)
         fetchSnapshotUsers()
           .then(users => setCachedDirectoryUsers(users))
-          .catch(err => console.error('Background directory refresh failed:', err))
+          .catch((err: unknown) => log.error('Background directory refresh failed', err))
           .finally(() => setDirectoryUsersRefreshInProgress(false))
       }
 
@@ -127,8 +131,8 @@ export async function GET() {
       total: classifiedUsers.length,
       cached: false,
     })
-  } catch (error) {
-    console.error('Directory users error:', error)
+  } catch (error: unknown) {
+    log.error('Directory users error', error)
     return ApiErrors.database()
   }
 }

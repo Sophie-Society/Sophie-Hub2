@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth/config'
 import { getSheetRawRows, detectHeaderRow } from '@/lib/google/sheets'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 
-export async function GET(request: NextRequest) {
+const logger = createLogger('api:sheets:raw-rows')
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions)
 
@@ -56,8 +59,8 @@ export async function GET(request: NextRequest) {
     }, {
       headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' },
     })
-  } catch (error) {
-    console.error('Error getting raw rows:', error)
+  } catch (error: unknown) {
+    logger.error('Error getting raw rows', error)
     return NextResponse.json(
       { error: 'Failed to get raw rows' },
       { status: 500 }

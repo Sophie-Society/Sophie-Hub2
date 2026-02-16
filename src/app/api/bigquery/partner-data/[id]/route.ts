@@ -12,13 +12,14 @@
  *   limit - max rows to return (default: 100)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { bigQueryConnector, UNIFIED_VIEWS } from '@/lib/connectors/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:partner-data')
 
 // Map short names to full view names for convenience
 const VIEW_ALIASES: Record<string, string> = {
@@ -34,7 +35,7 @@ const VIEW_ALIASES: Record<string, string> = {
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   try {
     const auth = await requireAuth()
     if (!auth.authenticated) {
@@ -50,6 +51,7 @@ export async function GET(
     }
 
     // Look up the partner's mapped client_name
+    const supabase = getAdminClient()
     const { data: mapping, error: mappingError } = await supabase
       .from('entity_external_ids')
       .select('external_id')
@@ -59,7 +61,7 @@ export async function GET(
       .maybeSingle()
 
     if (mappingError) {
-      console.error('Error looking up BigQuery mapping:', mappingError)
+      log.error('Error looking up BigQuery mapping', mappingError)
       return ApiErrors.database()
     }
 
@@ -111,10 +113,8 @@ export async function GET(
       headers: data.headers,
       rows: data.rows,
     })
-  } catch (error) {
-    console.error('BigQuery partner-data error:', error)
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to fetch partner data'
-    )
+  } catch (error: unknown) {
+    log.error('Failed to fetch partner data', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }

@@ -1,9 +1,10 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const logger = createLogger('api:help')
 
 /**
  * GET /api/help/[docId]
@@ -14,13 +15,15 @@ const supabase = getAdminClient()
 export async function GET(
   request: NextRequest,
   { params }: { params: { docId: string } }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   const { docId } = params
 
   try {
+    const supabase = getAdminClient()
+
     const { data, error } = await supabase
       .from('help_docs')
       .select('*')
@@ -33,7 +36,7 @@ export async function GET(
         // No rows returned
         return ApiErrors.notFound('Help document')
       }
-      console.error('Error fetching help doc:', error)
+      logger.error('Error fetching help doc', error)
       return ApiErrors.database(error.message)
     }
 
@@ -52,8 +55,8 @@ export async function GET(
         updated_at: data.updated_at,
       }
     })
-  } catch (error) {
-    console.error('Error in GET /api/help/[docId]:', error)
+  } catch (error: unknown) {
+    logger.error('Error in GET /api/help/[docId]', error)
     return ApiErrors.internal()
   }
 }

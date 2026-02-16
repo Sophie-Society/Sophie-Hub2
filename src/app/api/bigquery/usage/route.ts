@@ -2,7 +2,7 @@
  * GET /api/bigquery/usage?period=30d
  *
  * Returns BigQuery usage and cost data for the admin dashboard.
- * Uses a single combined INFORMATION_SCHEMA query (date × source) and derives:
+ * Uses a single combined INFORMATION_SCHEMA query (date x source) and derives:
  *   - Daily totals (aggregate across sources)
  *   - Daily costs per source (for filtered chart)
  *   - Source breakdown (aggregate across days)
@@ -12,17 +12,18 @@
  * Admin-only. Cached for 1 hour.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { BIGQUERY } from '@/lib/constants'
 import { getCachedUsage, setCachedUsage } from '@/lib/bigquery/usage-cache'
+import { createLogger } from '@/lib/logger'
 import type { UsageData, UsageOverview, DailyCost, SourceBreakdown, AccountUsage } from '@/types/usage'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:usage')
 
 const VALID_PERIODS = ['7d', '30d', '90d'] as const
 type Period = (typeof VALID_PERIODS)[number]
@@ -62,13 +63,13 @@ function periodToDays(period: Period): number {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   const period = (request.nextUrl.searchParams.get('period') || '30d') as Period
   if (!VALID_PERIODS.includes(period)) {
-    return apiError('VALIDATION_ERROR', 'Invalid period. Use 7d, 30d, or 90d.', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Invalid period. Use 7d, 30d, or 90d.', 400)
   }
 
   // Check cache
@@ -128,15 +129,14 @@ export async function GET(request: NextRequest) {
 
     setCachedUsage(period, data)
     return apiSuccess(data)
-  } catch (error) {
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to fetch usage data'
-    )
+  } catch (error: unknown) {
+    log.error('Failed to fetch usage data', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }
 
 // =============================================================================
-// Combined INFORMATION_SCHEMA query: daily × source in one scan
+// Combined INFORMATION_SCHEMA query: daily x source in one scan
 // =============================================================================
 
 /**
@@ -279,6 +279,7 @@ async function fetchSupabaseStats(startDate: string): Promise<{
   accounts: AccountUsage[]
   uniqueAccounts: number
 }> {
+  const supabase = getAdminClient()
   const { data: logs, error } = await supabase
     .from('bigquery_query_logs')
     .select('partner_id, partner_name, view_alias, bytes_processed, estimated_cost_usd, created_at')
@@ -300,27 +301,27 @@ async function fetchSupabaseStats(startDate: string): Promise<{
     last_query: string
   }>()
 
-  for (const log of logs) {
-    const key = log.partner_name || log.partner_id || 'unknown'
+  for (const logEntry of logs) {
+    const key = logEntry.partner_name || logEntry.partner_id || 'unknown'
     const existing = byPartner.get(key)
 
     if (existing) {
       existing.query_count++
-      existing.total_bytes += Number(log.bytes_processed ?? 0)
-      existing.estimated_cost += Number(log.estimated_cost_usd ?? 0)
-      if (log.view_alias) existing.views.add(log.view_alias)
+      existing.total_bytes += Number(logEntry.bytes_processed ?? 0)
+      existing.estimated_cost += Number(logEntry.estimated_cost_usd ?? 0)
+      if (logEntry.view_alias) existing.views.add(logEntry.view_alias)
     } else {
       const views = new Set<string>()
-      if (log.view_alias) views.add(log.view_alias)
+      if (logEntry.view_alias) views.add(logEntry.view_alias)
 
       byPartner.set(key, {
-        partner_id: log.partner_id,
-        partner_name: log.partner_name || 'Unknown',
+        partner_id: logEntry.partner_id,
+        partner_name: logEntry.partner_name || 'Unknown',
         query_count: 1,
-        total_bytes: Number(log.bytes_processed ?? 0),
-        estimated_cost: Number(log.estimated_cost_usd ?? 0),
+        total_bytes: Number(logEntry.bytes_processed ?? 0),
+        estimated_cost: Number(logEntry.estimated_cost_usd ?? 0),
         views,
-        last_query: log.created_at,
+        last_query: logEntry.created_at,
       })
     }
   }

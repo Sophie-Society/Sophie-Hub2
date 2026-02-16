@@ -9,11 +9,14 @@
 import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { createSyncRun } from '@/lib/slack/sync'
 import { checkRateLimit, RATE_LIMITS, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 
-export async function POST() {
+const log = createLogger('api:slack:sync:start')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -21,7 +24,7 @@ export async function POST() {
   const rateCheck = checkRateLimit(auth.user.id, 'slack:sync', RATE_LIMITS.ADMIN_HEAVY)
   if (!rateCheck.allowed) {
     return NextResponse.json(
-      { success: false, error: { code: 'RATE_LIMITED', message: 'Too many sync requests. Try again later.' } },
+      { success: false, error: { code: ErrorCodes.RATE_LIMITED, message: 'Too many sync requests. Try again later.' } },
       {
         status: 429,
         headers: {
@@ -35,18 +38,18 @@ export async function POST() {
   try {
     const runId = await createSyncRun(auth.user.email)
 
-    console.log(`Sync run started by ${auth.user.email}: ${runId}`)
+    log.info(`Sync run started by ${auth.user.email}: ${runId}`)
 
     return apiSuccess({ run_id: runId }, 201)
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
 
     // createSyncRun throws if a run is already in progress
     if (message.includes('already')) {
-      return apiError('CONFLICT', message, 409)
+      return apiError(ErrorCodes.CONFLICT, message, 409)
     }
 
-    console.error('POST sync/start error:', error)
+    log.error('POST sync/start error', error)
     return ApiErrors.internal()
   }
 }

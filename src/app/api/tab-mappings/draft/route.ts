@@ -1,15 +1,18 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiValidationError, apiError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiValidationError, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
 
-// Use singleton Supabase client
-const supabase = getAdminClient()
+const log = createLogger('api:tab-mappings:draft')
 
 // GET - Load draft state for a tab (admin only)
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const { searchParams } = new URL(request.url)
@@ -17,7 +20,7 @@ export async function GET(request: Request) {
     const tabName = searchParams.get('tab_name')
 
     if (!dataSourceId || !tabName) {
-      return apiError('VALIDATION_ERROR', 'data_source_id and tab_name are required', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'data_source_id and tab_name are required', 400)
     }
 
     // Look up the tab mapping
@@ -30,7 +33,7 @@ export async function GET(request: Request) {
 
     if (error && error.code !== 'PGRST116') {
       // PGRST116 is "not found" which is OK
-      console.error('Error loading draft:', error)
+      log.error('Error loading draft', error)
       return ApiErrors.database(error.message)
     }
 
@@ -43,16 +46,18 @@ export async function GET(request: Request) {
       updatedBy: tabMapping.draft_updated_by,
       updatedAt: tabMapping.draft_updated_at,
     })
-  } catch (error) {
-    console.error('Error in GET /api/tab-mappings/draft:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/tab-mappings/draft', error)
     return ApiErrors.internal()
   }
 }
 
 // POST - Save draft state for a tab (admin only)
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const body = await request.json()
@@ -104,16 +109,18 @@ export async function POST(request: Request) {
     }
 
     return apiSuccess({ saved: true })
-  } catch (error) {
-    console.error('Error in POST /api/tab-mappings/draft:', error)
+  } catch (error: unknown) {
+    log.error('Error in POST /api/tab-mappings/draft', error)
     return ApiErrors.internal()
   }
 }
 
 // DELETE - Clear draft state for a tab (admin only)
-export async function DELETE(request: Request) {
+export async function DELETE(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const { searchParams } = new URL(request.url)
@@ -121,7 +128,7 @@ export async function DELETE(request: Request) {
     const tabName = searchParams.get('tab_name')
 
     if (!dataSourceId || !tabName) {
-      return apiError('VALIDATION_ERROR', 'data_source_id and tab_name are required', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'data_source_id and tab_name are required', 400)
     }
 
     // Clear draft state (don't delete the tab mapping, just the draft)
@@ -141,8 +148,8 @@ export async function DELETE(request: Request) {
     }
 
     return apiSuccess({ cleared: true })
-  } catch (error) {
-    console.error('Error in DELETE /api/tab-mappings/draft:', error)
+  } catch (error: unknown) {
+    log.error('Error in DELETE /api/tab-mappings/draft', error)
     return ApiErrors.internal()
   }
 }

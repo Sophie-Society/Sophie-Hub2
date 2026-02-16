@@ -1,11 +1,12 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 
-// Use singleton Supabase client
-const supabase = getAdminClient()
+const log = createLogger('api:tab-mappings')
 
 // Schema for PATCH updates
 const PatchTabMappingSchema = z.object({
@@ -27,9 +28,11 @@ const PatchTabMappingSchema = z.object({
 })
 
 // POST - Create a new tab mapping (admin only)
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const body = await request.json()
@@ -82,21 +85,23 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating tab mapping:', error)
+      log.error('Error creating tab mapping', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ tabMapping }, 201)
-  } catch (error) {
-    console.error('Error in POST /api/tab-mappings:', error)
+  } catch (error: unknown) {
+    log.error('Error in POST /api/tab-mappings', error)
     return ApiErrors.internal()
   }
 }
 
 // PATCH - Update a tab mapping (e.g., save AI summary)
-export async function PATCH(request: Request) {
+export async function PATCH(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const body = await request.json()
@@ -130,17 +135,17 @@ export async function PATCH(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error updating tab mapping:', error)
+      log.error('Error updating tab mapping', error)
       return ApiErrors.database(error.message)
     }
 
     if (!data) {
-      return apiError('NOT_FOUND', 'Tab mapping not found', 404)
+      return apiError(ErrorCodes.NOT_FOUND, 'Tab mapping not found', 404)
     }
 
     return apiSuccess({ tabMapping: data })
-  } catch (error) {
-    console.error('Error in PATCH /api/tab-mappings:', error)
+  } catch (error: unknown) {
+    log.error('Error in PATCH /api/tab-mappings', error)
     return ApiErrors.internal()
   }
 }

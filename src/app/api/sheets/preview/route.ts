@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth/config'
 import { getSheetPreview } from '@/lib/google/sheets'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 
-export async function GET(request: NextRequest) {
+const logger = createLogger('api:sheets:preview')
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions)
 
@@ -42,8 +45,8 @@ export async function GET(request: NextRequest) {
         'Cache-Control': 'private, max-age=300, stale-while-revalidate=600',
       },
     })
-  } catch (error) {
-    console.error('Error getting sheet preview:', error)
+  } catch (error: unknown) {
+    logger.error('Error getting sheet preview', error)
     return NextResponse.json(
       { error: 'Failed to get sheet preview' },
       { status: 500 }

@@ -1,10 +1,12 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { ROLES } from '@/lib/auth/roles'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:feedback:status')
 
 const StatusUpdateSchema = z.object({
   status: z.enum(['new', 'reviewed', 'in_progress', 'resolved', 'wont_fix']),
@@ -17,7 +19,7 @@ const StatusUpdateSchema = z.object({
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -38,6 +40,8 @@ export async function PATCH(
       ? new Date().toISOString()
       : null
 
+    const supabase = getAdminClient()
+
     const { data, error } = await supabase
       .from('feedback')
       .update({
@@ -50,7 +54,7 @@ export async function PATCH(
       .single()
 
     if (error) {
-      console.error('Error updating feedback status:', error)
+      log.error('Error updating feedback status', error)
       return ApiErrors.database(error.message)
     }
 
@@ -59,8 +63,8 @@ export async function PATCH(
     }
 
     return apiSuccess({ feedback: data })
-  } catch (error) {
-    console.error('Error in PATCH /api/feedback/[id]/status:', error)
+  } catch (error: unknown) {
+    log.error('Error in PATCH /api/feedback/[id]/status', error)
     return ApiErrors.internal()
   }
 }

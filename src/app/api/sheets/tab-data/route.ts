@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth/config'
 import { getSheetData } from '@/lib/google/sheets'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 
-export async function GET(request: NextRequest) {
+const logger = createLogger('api:sheets:tab-data')
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions)
 
@@ -41,8 +44,8 @@ export async function GET(request: NextRequest) {
     const data = await getSheetData(session.accessToken, spreadsheetId, tabName, headerRow)
 
     return NextResponse.json(data)
-  } catch (error) {
-    console.error('Error getting tab data:', error)
+  } catch (error: unknown) {
+    logger.error('Error getting tab data', error)
     return NextResponse.json(
       { error: 'Failed to get tab data' },
       { status: 500 }

@@ -12,19 +12,20 @@
  * - Raw table data
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, apiValidationError, ErrorCodes } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS, rateLimitHeaders } from '@/lib/rate-limit'
 import { BIGQUERY } from '@/lib/constants'
 import { VIEW_ALIASES } from '@/types/modules'
 import { COLUMN_METADATA } from '@/lib/bigquery/column-metadata'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:portfolio-query')
 
 // Column whitelist per view (derived from column-metadata.ts)
 const ALLOWED_COLUMNS: Record<string, string[]> = Object.fromEntries(
@@ -112,7 +113,8 @@ function getCached(key: string): unknown | null {
   return entry.data
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const supabase = getAdminClient()
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -138,20 +140,20 @@ export async function POST(request: NextRequest) {
     // Resolve view name
     const viewName = resolveViewName(view)
     if (!viewName) {
-      return apiError('NOT_FOUND', `Unknown view: "${view}"`, 404)
+      return apiError(ErrorCodes.NOT_FOUND, `Unknown view: "${view}"`, 404)
     }
 
     // Validate columns against whitelist
     for (const col of metrics) {
       if (!isColumnAllowed(viewName, col)) {
-        return apiError('VALIDATION_ERROR', `Column "${col}" is not allowed for view "${view}"`, 400)
+        return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${col}" is not allowed for view "${view}"`, 400)
       }
     }
     if (group_by && !isColumnAllowed(viewName, group_by)) {
-      return apiError('VALIDATION_ERROR', `Column "${group_by}" is not allowed for group_by`, 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${group_by}" is not allowed for group_by`, 400)
     }
     if (sort_by && !isColumnAllowed(viewName, sort_by)) {
-      return apiError('VALIDATION_ERROR', `Column "${sort_by}" is not allowed for sort_by`, 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${sort_by}" is not allowed for sort_by`, 400)
     }
 
     // Build cache key
@@ -287,8 +289,8 @@ export async function POST(request: NextRequest) {
           duration_ms: null,
           query_mode: `portfolio-${mode}`,
         })
-      ).catch((err) => {
-        console.error('[bq-portfolio-log] Insert failed:', err)
+      ).catch((err: unknown) => {
+        log.error('[bq-portfolio-log] Insert failed:', err)
       })
     }).catch(() => {})
 
@@ -350,8 +352,8 @@ export async function POST(request: NextRequest) {
     portfolioCache.set(cacheKey, { data: result, timestamp: Date.now() })
 
     return apiSuccess(result, 200, rateLimitHeaders(rateLimit))
-  } catch (error) {
-    console.error('[portfolio-query] Error:', error instanceof Error ? error.message : error)
+  } catch (error: unknown) {
+    log.error('[portfolio-query] Error:', error instanceof Error ? error.message : error)
     return ApiErrors.internal('Portfolio query failed')
   }
 }

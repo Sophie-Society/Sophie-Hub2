@@ -1,10 +1,14 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getSyncEngine } from '@/lib/sync'
 import { checkSyncRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
+
+const log = createLogger('api:sync:tab')
 
 // Validation schema for sync options
 const SyncOptionsSchema = z.object({
@@ -45,7 +49,7 @@ const SyncOptionsSchema = z.object({
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   // Require data-enrichment:write permission
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
@@ -59,7 +63,7 @@ export async function POST(
   // Check rate limit
   const rateLimitResult = checkSyncRateLimit(auth.user.id)
   if (!rateLimitResult.allowed) {
-    return new Response(
+    return new NextResponse(
       JSON.stringify({
         success: false,
         error: {
@@ -113,8 +117,8 @@ export async function POST(
       changes: result.changes.map(({ sourceData, ...rest }) => rest),
       duration_ms: result.durationMs,
     })
-  } catch (error) {
-    console.error('Error in POST /api/sync/tab/[id]:', error)
+  } catch (error: unknown) {
+    log.error('Error in POST /api/sync/tab/[id]', error)
 
     if (error instanceof Error) {
       // Return more specific error messages

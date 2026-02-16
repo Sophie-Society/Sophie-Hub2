@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
@@ -5,9 +6,10 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getConnector, hasConnector, type GoogleSheetConnectorConfig, type ConnectorTypeId } from '@/lib/connectors'
 import { applyTransform } from '@/lib/sync/transforms'
+import { createLogger } from '@/lib/logger'
 import type { TransformType } from '@/lib/sync/types'
 
-const supabase = getAdminClient()
+const log = createLogger('api:partners:sync')
 
 interface SyncSourceResult {
   sourceName: string
@@ -33,7 +35,7 @@ interface SyncSourceResult {
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -51,6 +53,8 @@ export async function POST(
     if (!hasAccess) {
       return ApiErrors.forbidden('You do not have access to this partner')
     }
+
+    const supabase = getAdminClient()
 
     // 1. Get the partner with current source_data
     const { data: partner, error: partnerError } = await supabase
@@ -82,7 +86,7 @@ export async function POST(
       .eq('status', 'active')
 
     if (tabError) {
-      console.error('Error fetching tab mappings:', tabError)
+      log.error('Error fetching tab mappings', tabError)
       return ApiErrors.database()
     }
 
@@ -250,8 +254,8 @@ export async function POST(
               mergedFields[mapping.target_field] = transformedValue
               fieldsFromThisSource.push(mapping.target_field)
             }
-          } catch (error) {
-            console.error(`Transform failed for ${mapping.source_column}:`, error)
+          } catch (error: unknown) {
+            log.error(`Transform failed for ${mapping.source_column}`, error)
           }
         }
 
@@ -263,8 +267,8 @@ export async function POST(
           fieldsUpdated: fieldsFromThisSource,
         })
 
-      } catch (error) {
-        console.error(`Error syncing from ${dataSource.name}:`, error)
+      } catch (error: unknown) {
+        log.error(`Error syncing from ${dataSource.name}`, error)
         syncResults.push({
           sourceName: dataSource.name,
           sourceType: dataSource.type,
@@ -297,7 +301,7 @@ export async function POST(
       .eq('id', id)
 
     if (updateError) {
-      console.error('Error updating partner:', updateError)
+      log.error('Error updating partner', updateError)
       return ApiErrors.database()
     }
 
@@ -310,8 +314,8 @@ export async function POST(
       sources: syncResults,
     })
 
-  } catch (error) {
-    console.error('Error in POST /api/partners/[id]/sync:', error)
+  } catch (error: unknown) {
+    log.error('Error in POST /api/partners/[id]/sync', error)
 
     if (error instanceof Error) {
       if (error.message.includes('invalid_grant') || error.message.includes('Token has been expired')) {

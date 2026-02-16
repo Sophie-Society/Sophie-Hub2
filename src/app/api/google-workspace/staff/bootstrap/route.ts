@@ -8,16 +8,20 @@
  * Excludes shared inboxes and suspended/deleted directory accounts.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
 import {
   refreshGoogleWorkspaceStaffApprovalQueue,
   resolveGoogleWorkspaceApprovalByUserId,
 } from '@/lib/google-workspace/staff-approval-queue'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
+
+const log = createLogger('api:gws:bootstrap')
 
 type SnapshotRow = {
   google_user_id: string
@@ -44,7 +48,7 @@ function nameFromEmail(email: string): string {
     .join(' ') || email
 }
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -59,7 +63,7 @@ export async function POST() {
       .order('primary_email', { ascending: true })
 
     if (snapshotError) {
-      console.error('Failed to load directory snapshot for bootstrap:', snapshotError)
+      log.error('Failed to load directory snapshot for bootstrap', snapshotError)
       return ApiErrors.database()
     }
 
@@ -169,7 +173,7 @@ export async function POST() {
               .single()
             staffId = existingByEmail?.id || null
           } else {
-            console.error(`Failed to insert staff for ${user.primary_email}:`, insertError)
+            log.error(`Failed to insert staff for ${user.primary_email}`, insertError)
             continue
           }
         } else {
@@ -206,15 +210,15 @@ export async function POST() {
         )
 
       if (mapError) {
-        console.error(`Failed to map ${user.primary_email} -> staff ${staffId}:`, mapError)
+        log.error(`Failed to map ${user.primary_email} -> staff ${staffId}`, mapError)
         continue
       }
 
       mappedGoogleUsers.add(user.google_user_id)
       try {
         await resolveGoogleWorkspaceApprovalByUserId(user.google_user_id)
-      } catch (queueError) {
-        console.error('Failed to resolve queue item during bootstrap:', queueError)
+      } catch (queueError: unknown) {
+        log.error('Failed to resolve queue item during bootstrap', queueError)
       }
     }
 
@@ -231,8 +235,8 @@ export async function POST() {
       },
       staff_approvals_queue: queueSync,
     })
-  } catch (error) {
-    console.error('Google Workspace staff bootstrap error:', error)
+  } catch (error: unknown) {
+    log.error('Google Workspace staff bootstrap error', error)
     return ApiErrors.internal()
   }
 }

@@ -1,9 +1,11 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { deduplicateLineage, type FieldLineageRow } from '@/types/lineage'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:staff:detail')
 
 /**
  * GET /api/staff/[id]
@@ -14,12 +16,14 @@ const supabase = getAdminClient()
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
     const { id } = await params
+
+    const supabase = getAdminClient()
 
     const [staffResult, assignmentsResult, lineageResult] = await Promise.all([
       supabase
@@ -45,7 +49,7 @@ export async function GET(
       if (staffResult.error.code === 'PGRST116') {
         return ApiErrors.notFound('Staff member')
       }
-      console.error('Error fetching staff:', staffResult.error)
+      log.error('Error fetching staff', staffResult.error)
       return ApiErrors.database(staffResult.error.message)
     }
 
@@ -59,8 +63,8 @@ export async function GET(
         lineage,
       },
     })
-  } catch (error) {
-    console.error('Error in GET /api/staff/[id]:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/staff/[id]', error)
     return ApiErrors.internal()
   }
 }

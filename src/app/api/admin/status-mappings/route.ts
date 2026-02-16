@@ -1,13 +1,16 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes, apiValidationError } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 import { BUCKET_COLORS, BUCKET_LABELS, type StatusColorBucket } from '@/lib/status-colors'
 import { invalidateMappingsCache } from '@/lib/status-colors/cache'
 
-// Valid buckets for validation
+const log = createLogger('api:admin:status-mappings')
+
 const VALID_BUCKETS = ['healthy', 'onboarding', 'warning', 'paused', 'offboarding', 'churned'] as const
 
 const CreateMappingSchema = z.object({
@@ -20,7 +23,7 @@ const CreateMappingSchema = z.object({
  * GET /api/admin/status-mappings
  * Returns all status color mappings (admin only)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -34,11 +37,10 @@ export async function GET() {
       .order('status_pattern')
 
     if (error) {
-      console.error('Failed to fetch status mappings:', error)
-      return ApiErrors.database(error.message)
+      log.error('Failed to fetch status mappings', error)
+      return ApiErrors.database()
     }
 
-    // Include bucket metadata
     const buckets = VALID_BUCKETS.map(bucket => ({
       id: bucket,
       label: BUCKET_LABELS[bucket as StatusColorBucket],
@@ -51,9 +53,9 @@ export async function GET() {
     }, 200, {
       'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
     })
-  } catch (error) {
-    console.error('Status mappings fetch error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to fetch status mappings', 500)
+  } catch (error: unknown) {
+    log.error('Status mappings fetch error', error)
+    return ApiErrors.internal()
   }
 }
 
@@ -61,7 +63,7 @@ export async function GET() {
  * POST /api/admin/status-mappings
  * Creates a new status color mapping (admin only)
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -81,7 +83,6 @@ export async function POST(request: Request) {
     const { status_pattern, bucket, priority } = validation.data
     const supabase = getAdminClient()
 
-    // Check if pattern already exists
     const { data: existing } = await supabase
       .from('status_color_mappings')
       .select('id')
@@ -89,10 +90,9 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (existing) {
-      return apiError('DUPLICATE', `Pattern "${status_pattern}" already exists`, 409)
+      return apiError(ErrorCodes.CONFLICT, `Pattern "${status_pattern}" already exists`, 409)
     }
 
-    // Only set created_by if user has a valid UUID (not temp-email format)
     const userId = authResult.user?.id
     const validUserId = userId && !userId.startsWith('temp-') ? userId : null
 
@@ -110,16 +110,15 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Failed to create status mapping:', error)
-      return ApiErrors.database(error.message)
+      log.error('Failed to create status mapping', error)
+      return ApiErrors.database()
     }
 
-    // Invalidate cache so new mapping takes effect
     invalidateMappingsCache()
 
     return apiSuccess({ mapping }, 201)
-  } catch (error) {
-    console.error('Status mapping creation error:', error)
-    return apiError('INTERNAL_ERROR', 'Failed to create status mapping', 500)
+  } catch (error: unknown) {
+    log.error('Status mapping creation error', error)
+    return ApiErrors.internal()
   }
 }

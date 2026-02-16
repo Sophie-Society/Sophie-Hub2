@@ -1,8 +1,10 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:partners:field-lineage')
 
 export interface FieldLineageInfo {
   targetField: string
@@ -18,11 +20,13 @@ export interface FieldLineageInfo {
  * Returns the mapping lineage for all partner fields.
  * Shows which sheet, tab, and column each field was mapped from.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
+
     // Query the column mappings with joins to get full lineage
     // Foreign key is tab_mapping_id -> tab_mappings, and data_source_id -> data_sources
     const { data, error } = await supabase
@@ -44,17 +48,12 @@ export async function GET() {
       .not('target_field', 'is', null)
 
     if (error) {
-      console.error('Error fetching field lineage:', error)
+      log.error('Error fetching field lineage', error)
       return ApiErrors.database()
     }
 
     // Transform to a clean structure, filtering for partners
     const lineage: Record<string, FieldLineageInfo> = {}
-
-    // Debug: log first few raw rows to see data structure
-    if (data && data.length > 0) {
-      console.log('[field-lineage] Sample raw row:', JSON.stringify(data[0], null, 2))
-    }
 
     for (const row of data || []) {
       // Supabase returns nested relations - use unknown first to handle type mismatch
@@ -81,9 +80,6 @@ export async function GET() {
           ? `Column ${String.fromCharCode(65 + sourceColumnIndex)}` // A, B, C, etc.
           : 'Unknown'
 
-      // Debug: log each processed entry
-      console.log(`[field-lineage] ${row.target_field}: source_column="${sourceColumn}", tab_name="${tabMappingRaw.tab_name}", sheet="${tabMappingRaw.data_source?.name}"`)
-
       lineage[row.target_field] = {
         targetField: row.target_field,
         sourceColumn,
@@ -94,8 +90,8 @@ export async function GET() {
     }
 
     return apiSuccess({ lineage })
-  } catch (error) {
-    console.error('Error in GET /api/partners/field-lineage:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/partners/field-lineage', error)
     return ApiErrors.internal()
   }
 }

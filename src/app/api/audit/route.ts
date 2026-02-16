@@ -1,7 +1,10 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { audit, type AuditAction, type AuditResourceType } from '@/lib/audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:audit')
 
 /**
  * GET /api/audit
@@ -16,7 +19,7 @@ import { audit, type AuditAction, type AuditResourceType } from '@/lib/audit'
  * - user_id: Filter by user
  * - limit: Number of results (default 50, max 200)
  */
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -38,8 +41,8 @@ export async function GET(request: NextRequest) {
     })
 
     return apiSuccess({ logs, count: logs.length })
-  } catch (error) {
-    console.error('Error fetching audit logs:', error)
+  } catch (error: unknown) {
+    log.error('Error fetching audit logs:', error)
     return ApiErrors.database(error instanceof Error ? error.message : 'Failed to fetch audit logs')
   }
 }

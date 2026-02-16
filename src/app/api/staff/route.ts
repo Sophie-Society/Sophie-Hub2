@@ -1,10 +1,11 @@
-import { getAdminClient } from '@/lib/supabase/admin'
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
-import { escapePostgrestValue } from '@/lib/api/search-utils'
+import { createLogger } from '@/lib/logger'
+import * as staffService from '@/lib/services/staff.service'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:staff')
 
 const QuerySchema = z.object({
   search: z.string().max(200).optional(),
@@ -19,20 +20,9 @@ const QuerySchema = z.object({
 
 /**
  * GET /api/staff
- *
  * List staff with search, filter, sort, and pagination.
- *
- * Query params:
- * - search: string - Search full_name, email, staff_code
- * - status: string - Comma-separated status filter
- * - role: string - Comma-separated role filter
- * - department: string - Comma-separated department filter
- * - sort: 'full_name' | 'created_at' | 'role' | 'hire_date'
- * - order: 'asc' | 'desc'
- * - limit: number (1-100, default 50)
- * - offset: number (default 0)
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -54,58 +44,13 @@ export async function GET(request: Request) {
       return apiError(ErrorCodes.VALIDATION_ERROR, validation.error.message, 400)
     }
 
-    const { search, status, role, department, sort, order, limit, offset } = validation.data
+    const result = await staffService.listStaff(validation.data)
 
-    let query = supabase
-      .from('staff')
-      .select(
-        'id, staff_code, full_name, email, role, department, title, status, max_clients, current_client_count, services, hire_date, avatar_url, timezone, created_at',
-        { count: 'exact' }
-      )
-
-    // Search across full_name, email, staff_code
-    if (search) {
-      const escaped = escapePostgrestValue(search)
-      query = query.or(
-        `full_name.ilike.%${escaped}%,email.ilike.%${escaped}%,staff_code.ilike.%${escaped}%`
-      )
-    }
-
-    if (status) {
-      const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
-      query = query.in('status', statuses)
-    }
-
-    if (role) {
-      const roles = role.split(',').map(r => r.trim()).filter(Boolean)
-      query = query.in('role', roles)
-    }
-
-    if (department) {
-      const departments = department.split(',').map(d => d.trim()).filter(Boolean)
-      query = query.in('department', departments)
-    }
-
-    query = query
-      .order(sort, { ascending: order === 'asc' })
-      .range(offset, offset + limit - 1)
-
-    const { data: staff, error, count } = await query
-
-    if (error) {
-      console.error('Error fetching staff:', error)
-      return ApiErrors.database(error.message)
-    }
-
-    return apiSuccess({
-      staff: staff || [],
-      total: count || 0,
-      has_more: (count || 0) > offset + limit,
-    }, 200, {
+    return apiSuccess(result, 200, {
       'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
     })
-  } catch (error) {
-    console.error('Error in GET /api/staff:', error)
+  } catch (error: unknown) {
+    log.error('Failed to list staff', error)
     return ApiErrors.internal()
   }
 }

@@ -1,27 +1,29 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { DataSourceSchemaV2 } from '@/lib/validations/schemas'
 import { getConnectorRegistry } from '@/lib/connectors'
 import { audit } from '@/lib/audit'
+import { createLogger } from '@/lib/logger'
 import {
   CategoryStats,
   DataSourceWithStats,
 } from '@/types/entities'
 
-// Use singleton Supabase client
-const supabase = getAdminClient()
+const logger = createLogger('api:data-sources')
 
 // Re-export types for backwards compatibility
 export type { CategoryStats, DataSourceWithStats }
 
 // POST - Create a new data source (admin only)
 // Supports both legacy format { spreadsheet_id } and new format { type, connection_config }
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const body = await request.json()
 
     // Validate input with V2 schema (supports both formats)
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
         const connector = getConnectorRegistry().get(connectorType as 'google_sheet')
         const configValidation = connector.validateConfig(connection_config)
         if (configValidation !== true) {
-          return apiError('VALIDATION_ERROR', configValidation, 400)
+          return apiError(ErrorCodes.VALIDATION_ERROR, configValidation, 400)
         }
       }
     } else if (spreadsheet_id) {
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
         spreadsheet_url: spreadsheet_url ?? null,
       }
     } else {
-      return apiError('VALIDATION_ERROR', 'Either spreadsheet_id or connection_config is required', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Either spreadsheet_id or connection_config is required', 400)
     }
 
     // Check if this source is already connected (by spreadsheet_id for sheets)
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
 
       if (existing) {
         return apiError(
-          'CONFLICT',
+          ErrorCodes.CONFLICT,
           'This spreadsheet is already connected',
           409,
           { existingId: existing.id }
@@ -106,7 +108,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating data source:', error)
+      logger.error('Error creating data source', error)
       return ApiErrors.database(error.message)
     }
 
@@ -120,19 +122,21 @@ export async function POST(request: Request) {
     )
 
     return apiSuccess({ source }, 201)
-  } catch (error) {
-    console.error('Error in POST /api/data-sources:', error)
+  } catch (error: unknown) {
+    logger.error('Error in POST /api/data-sources', error)
     return ApiErrors.internal()
   }
 }
 
 // GET - Fetch all data sources with stats (admin only)
 // Optimized: Uses 3 queries total instead of N+1 pattern (was 1 + N + N*M queries)
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
+
     // Query 1: Fetch all data sources
     let sources, sourcesError
 
@@ -265,8 +269,8 @@ export async function GET() {
     return apiSuccess({ sources: sourcesWithStats }, 200, {
       'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
     })
-  } catch (error) {
-    console.error('Error fetching data sources:', error)
+  } catch (error: unknown) {
+    logger.error('Error fetching data sources', error)
     return ApiErrors.database(error instanceof Error ? error.message : 'Database error')
   }
 }

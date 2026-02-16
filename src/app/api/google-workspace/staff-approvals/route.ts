@@ -1,8 +1,12 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:gws:staff-approvals')
 
 const QuerySchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected', 'ignored', 'resolved']).optional(),
@@ -24,7 +28,7 @@ function isMissingTableError(error: unknown): boolean {
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -70,7 +74,7 @@ export async function GET(request: Request) {
           setup_required: true,
         })
       }
-      console.error('Failed to fetch staff approval queue:', error)
+      log.error('Failed to fetch staff approval queue', error)
       return ApiErrors.database()
     }
 
@@ -81,7 +85,7 @@ export async function GET(request: Request) {
 
     if (countError) {
       if (!isMissingTableError(countError)) {
-        console.error('Failed to fetch staff approval queue counts:', countError)
+        log.error('Failed to fetch staff approval queue counts', countError)
       }
       return apiSuccess({
         approvals: rows || [],
@@ -113,13 +117,13 @@ export async function GET(request: Request) {
       approvals: rows || [],
       counts,
     })
-  } catch (error) {
-    console.error('GET /api/google-workspace/staff-approvals error:', error)
+  } catch (error: unknown) {
+    log.error('GET /api/google-workspace/staff-approvals error', error)
     return ApiErrors.internal()
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -143,7 +147,7 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (existingError && !isMissingTableError(existingError)) {
-      console.error('Failed to load existing approval row:', existingError)
+      log.error('Failed to load existing approval row', existingError)
       return ApiErrors.database()
     }
 
@@ -190,7 +194,7 @@ export async function POST(request: Request) {
             setup_required: true,
           })
         }
-        console.error('Failed to skip approval row:', error)
+        log.error('Failed to skip approval row', error)
         return ApiErrors.database()
       }
 
@@ -216,7 +220,7 @@ export async function POST(request: Request) {
 
     if (updateError) {
       if (!isMissingTableError(updateError)) {
-        console.error('Failed to unskip approval row:', updateError)
+        log.error('Failed to unskip approval row', updateError)
         return ApiErrors.database()
       }
     }
@@ -252,7 +256,7 @@ export async function POST(request: Request) {
 
       if (insertError) {
         if (!isMissingTableError(insertError)) {
-          console.error('Failed to insert unskipped approval row:', insertError)
+          log.error('Failed to insert unskipped approval row', insertError)
           return ApiErrors.database()
         }
       }
@@ -262,8 +266,8 @@ export async function POST(request: Request) {
       source_user_id,
       status: 'pending',
     })
-  } catch (error) {
-    console.error('POST /api/google-workspace/staff-approvals error:', error)
+  } catch (error: unknown) {
+    log.error('POST /api/google-workspace/staff-approvals error', error)
     return ApiErrors.internal()
   }
 }

@@ -4,12 +4,16 @@
  * Return current sync state: snapshot stats, last sync time, drift summary.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
 import { isStaffEligibleForAutoMapping } from '@/lib/staff/lifecycle'
+
+const log = createLogger('api:gws:sync-status')
 
 function isSnapshotSchemaError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code
@@ -21,7 +25,7 @@ function isQueueSchemaError(error: unknown): boolean {
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -53,7 +57,7 @@ export async function GET() {
           setup_required: true,
         })
       }
-      console.error('Failed to fetch sync status:', error)
+      log.error('Failed to fetch sync status', error)
       return ApiErrors.database()
     }
 
@@ -92,7 +96,7 @@ export async function GET() {
       .eq('status', 'ignored')
 
     if (ignoredApprovalError && !isQueueSchemaError(ignoredApprovalError)) {
-      console.error('Failed to fetch ignored staff approvals:', ignoredApprovalError)
+      log.error('Failed to fetch ignored staff approvals', ignoredApprovalError)
     }
 
     const ignoredGoogleUsers = new Set(
@@ -145,7 +149,7 @@ export async function GET() {
       .eq('status', 'pending')
 
     if (approvalError && !isQueueSchemaError(approvalError)) {
-      console.error('Failed to fetch pending staff approvals:', approvalError)
+      log.error('Failed to fetch pending staff approvals', approvalError)
     }
 
     return apiSuccess({
@@ -162,8 +166,8 @@ export async function GET() {
       last_sync_at: lastSyncAt,
       has_snapshot: total > 0,
     })
-  } catch (error) {
-    console.error('Sync status error:', error)
+  } catch (error: unknown) {
+    log.error('Sync status error', error)
     return ApiErrors.internal()
   }
 }

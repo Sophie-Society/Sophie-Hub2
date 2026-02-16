@@ -1,16 +1,19 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
 
-// Use singleton Supabase client
-const supabase = getAdminClient()
+const log = createLogger('api:tab-mappings:confirm-header')
 
 // POST - Confirm header row selection for a tab (admin only)
 // Creates tab_mapping if it doesn't exist, or updates header_confirmed = true
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const body = await request.json()
@@ -63,13 +66,13 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating tab mapping:', error)
+      log.error('Error creating tab mapping', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ tabMapping, created: true }, 201)
-  } catch (error) {
-    console.error('Error in POST /api/tab-mappings/confirm-header:', error)
+  } catch (error: unknown) {
+    log.error('Error in POST /api/tab-mappings/confirm-header', error)
     return ApiErrors.internal()
   }
 }

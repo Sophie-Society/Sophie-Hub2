@@ -1,9 +1,11 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { deduplicateLineage, type FieldLineageRow } from '@/types/lineage'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:partners:detail')
 
 /**
  * GET /api/partners/[id]
@@ -15,7 +17,7 @@ const supabase = getAdminClient()
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -27,6 +29,8 @@ export async function GET(
     if (!hasAccess) {
       return ApiErrors.forbidden('You do not have access to this partner')
     }
+
+    const supabase = getAdminClient()
 
     // Run all queries in parallel
     const [partnerResult, assignmentsResult, asinsResult, statusesResult, lineageResult] = await Promise.all([
@@ -64,7 +68,7 @@ export async function GET(
       if (partnerResult.error.code === 'PGRST116') {
         return ApiErrors.notFound('Partner')
       }
-      console.error('Error fetching partner:', partnerResult.error)
+      log.error('Error fetching partner', partnerResult.error)
       return ApiErrors.database()
     }
 
@@ -80,8 +84,8 @@ export async function GET(
         lineage,
       },
     })
-  } catch (error) {
-    console.error('Error in GET /api/partners/[id]:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/partners/[id]', error)
     return ApiErrors.internal()
   }
 }

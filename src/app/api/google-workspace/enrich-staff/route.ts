@@ -11,11 +11,15 @@
  * - phone: only set if currently empty in DB
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
+
+const log = createLogger('api:gws:enrich-staff')
 
 type JsonRecord = Record<string, unknown>
 
@@ -68,7 +72,7 @@ function buildGoogleWorkspaceSourcePayload(snapshot: DirectorySnapshotRow): Json
   }
 }
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -77,7 +81,7 @@ export async function POST() {
   try {
     const supabase = getAdminClient()
 
-    // 1. Fetch all staff ↔ Google Workspace mappings
+    // 1. Fetch all staff <-> Google Workspace mappings
     const { data: mappings, error: mappingsError } = await supabase
       .from('entity_external_ids')
       .select('entity_id, external_id, metadata')
@@ -85,7 +89,7 @@ export async function POST() {
       .eq('source', 'google_workspace_user')
 
     if (mappingsError) {
-      console.error('Failed to fetch GWS mappings:', mappingsError)
+      log.error('Failed to fetch GWS mappings', mappingsError)
       return ApiErrors.database()
     }
 
@@ -107,11 +111,11 @@ export async function POST() {
       .in('google_user_id', googleUserIds)
 
     if (snapError) {
-      console.error('Failed to fetch directory snapshot:', snapError)
+      log.error('Failed to fetch directory snapshot', snapError)
       return ApiErrors.database()
     }
 
-    // Build lookup: google_user_id → snapshot row
+    // Build lookup: google_user_id -> snapshot row
     const snapshotById = new Map(
       (snapshotUsers as DirectorySnapshotRow[] || []).map(u => [u.google_user_id, u])
     )
@@ -151,7 +155,7 @@ export async function POST() {
         .single()
 
       if (existingError || !existing) {
-        console.error(`Failed to load staff record ${mapping.entity_id}:`, existingError)
+        log.error(`Failed to load staff record ${mapping.entity_id}`, existingError)
         skipped++
         continue
       }
@@ -170,7 +174,7 @@ export async function POST() {
           field: 'avatar_url',
           previous: existing.avatar_url,
           next: snapshot.thumbnail_photo_url,
-          sourceRef: 'Google Workspace → Directory Snapshot → thumbnail_photo_url',
+          sourceRef: 'Google Workspace -> Directory Snapshot -> thumbnail_photo_url',
         })
       }
 
@@ -180,7 +184,7 @@ export async function POST() {
           field: 'title',
           previous: existing.title,
           next: snapshot.title,
-          sourceRef: 'Google Workspace → Directory Snapshot → title',
+          sourceRef: 'Google Workspace -> Directory Snapshot -> title',
         })
       }
 
@@ -190,7 +194,7 @@ export async function POST() {
           field: 'phone',
           previous: existing.phone,
           next: snapshot.phone,
-          sourceRef: 'Google Workspace → Directory Snapshot → phone',
+          sourceRef: 'Google Workspace -> Directory Snapshot -> phone',
         })
       }
 
@@ -214,7 +218,7 @@ export async function POST() {
         .eq('id', mapping.entity_id)
 
       if (updateError) {
-        console.error(`Failed to enrich staff ${mapping.entity_id}:`, updateError)
+        log.error(`Failed to enrich staff ${mapping.entity_id}`, updateError)
         skipped++
         continue
       }
@@ -243,7 +247,7 @@ export async function POST() {
         .insert(lineageRows)
       if (lineageError) {
         // Non-blocking: enrichment succeeded, but provenance write failed.
-        console.error('Failed to write Google Workspace field lineage:', lineageError)
+        log.error('Failed to write Google Workspace field lineage', lineageError)
       }
     }
 
@@ -253,8 +257,8 @@ export async function POST() {
       total_mappings: mappings.length,
       fields_updated: fieldsUpdated,
     })
-  } catch (error) {
-    console.error('GWS staff enrichment error:', error)
+  } catch (error: unknown) {
+    log.error('GWS staff enrichment error', error)
     return ApiErrors.internal()
   }
 }

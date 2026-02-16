@@ -7,6 +7,7 @@
  * Server-side cache: BigQuery queries are slow (~15s), so we cache for 10 min.
  */
 
+import { NextResponse } from 'next/server'
 import { bigQueryConnector } from '@/lib/connectors/bigquery'
 import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -14,8 +15,11 @@ import {
   getCachedClientNames,
   setCachedClientNames,
 } from '@/lib/connectors/bigquery-cache'
+import { createLogger } from '@/lib/logger'
 
-export async function GET() {
+const log = createLogger('api:bigquery:client-names')
+
+export async function GET(): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')
@@ -26,7 +30,7 @@ export async function GET() {
     // Check shared server-side cache first
     const cached = getCachedClientNames()
     if (cached) {
-      console.log('[BigQuery client-names] Serving from cache')
+      log.info('Serving from cache')
       const response = apiSuccess({
         clientNames: cached,
         count: cached.length,
@@ -36,7 +40,7 @@ export async function GET() {
       return response
     }
 
-    console.log('[BigQuery client-names] Fetching from BigQuery...')
+    log.info('Fetching from BigQuery')
     const config = {
       type: 'bigquery' as const,
       project_id: 'sophie-society-reporting',
@@ -47,7 +51,7 @@ export async function GET() {
 
     // Update shared cache
     setCachedClientNames(clientNames)
-    console.log(`[BigQuery client-names] Cached ${clientNames.length} names`)
+    log.info(`Cached ${clientNames.length} names`)
 
     // Add Cache-Control header for browser caching too
     const response = apiSuccess({
@@ -57,10 +61,8 @@ export async function GET() {
     })
     response.headers.set('Cache-Control', 'private, max-age=300') // 5 min browser cache
     return response
-  } catch (error) {
-    console.error('BigQuery client-names error:', error)
-    return ApiErrors.internal(
-      error instanceof Error ? error.message : 'Failed to fetch client names'
-    )
+  } catch (error: unknown) {
+    log.error('Failed to fetch client names', error instanceof Error ? error.message : error)
+    return ApiErrors.internal()
   }
 }

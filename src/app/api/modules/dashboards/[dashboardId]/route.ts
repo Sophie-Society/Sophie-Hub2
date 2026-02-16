@@ -6,7 +6,7 @@
  * DELETE: Delete dashboard (admin only)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -14,16 +14,15 @@ import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { z } from 'zod'
 import type { DashboardWithChildren, DashboardWidget, SectionWithWidgets } from '@/types/modules'
 
-const supabase = getAdminClient()
-
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { dashboardId } = await params
 
     // Fetch dashboard
@@ -86,11 +85,12 @@ const UpdateDashboardSchema = z.object({
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { dashboardId } = await params
     const body = await request.json()
     const validation = UpdateDashboardSchema.safeParse(body)
@@ -119,11 +119,12 @@ export async function PATCH(
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { dashboardId } = await params
 
     const { error } = await supabase

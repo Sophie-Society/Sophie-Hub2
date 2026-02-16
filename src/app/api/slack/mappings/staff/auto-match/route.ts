@@ -5,6 +5,7 @@
  * Updates entity_external_ids and staff.slack_id.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -12,8 +13,11 @@ import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateUsersCache } from '@/lib/connectors/slack-cache'
 import { bulkReclassifyStaffMessages } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
 
-export async function POST() {
+const log = createLogger('api:slack:mappings:staff:auto-match')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -39,7 +43,7 @@ export async function POST() {
       .not('email', 'is', null)
 
     if (staffError) {
-      console.error('Failed to fetch staff:', staffError)
+      log.error('Failed to fetch staff:', staffError)
       return ApiErrors.database()
     }
 
@@ -103,7 +107,7 @@ export async function POST() {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`Batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`Batch ${i / BATCH_SIZE + 1} failed:`, error)
         }
       }
 
@@ -146,8 +150,8 @@ export async function POST() {
       unmatched_staff: unmatchedStaff.slice(0, 20),
       unmatched_slack_users: unmatchedSlackUsers,
     })
-  } catch (error) {
-    console.error('Staff auto-match error:', error)
+  } catch (error: unknown) {
+    log.error('Staff auto-match error:', error)
     return ApiErrors.internal()
   }
 }

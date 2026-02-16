@@ -10,18 +10,19 @@
  * - Table queries (raw rows with column selection)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, ErrorCodes, apiValidationError } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS, rateLimitHeaders } from '@/lib/rate-limit'
 import { BIGQUERY } from '@/lib/constants'
 import { VIEW_ALIASES } from '@/types/modules'
 import { COLUMN_METADATA } from '@/lib/bigquery/column-metadata'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:bigquery:query')
 
 // =============================================================================
 // Server-side response cache (10 min TTL, keyed by query params)
@@ -159,7 +160,7 @@ function getPartnerFilterCondition(partnerField: string): string {
 // Route handler
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -215,23 +216,24 @@ export async function POST(request: NextRequest) {
     // Resolve view name
     const viewName = resolveViewName(view)
     if (!viewName) {
-      return apiError('NOT_FOUND', `Unknown view: "${view}"`, 404)
+      return apiError(ErrorCodes.NOT_FOUND, `Unknown view: "${view}"`, 404)
     }
 
     // Validate all column names against whitelist
     for (const col of metrics) {
       if (!isColumnAllowed(viewName, col)) {
-        return apiError('VALIDATION_ERROR', `Column "${col}" is not allowed for view "${view}"`, 400)
+        return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${col}" is not allowed for view "${view}"`, 400)
       }
     }
     if (group_by && !isColumnAllowed(viewName, group_by)) {
-      return apiError('VALIDATION_ERROR', `Column "${group_by}" is not allowed for group_by`, 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${group_by}" is not allowed for group_by`, 400)
     }
     if (sort_by && !isColumnAllowed(viewName, sort_by)) {
-      return apiError('VALIDATION_ERROR', `Column "${sort_by}" is not allowed for sort_by`, 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, `Column "${sort_by}" is not allowed for sort_by`, 400)
     }
 
     // Look up partner's client_id from entity_external_ids
+    const supabase = getAdminClient()
     const { data: mapping, error: mappingError } = await supabase
       .from('entity_external_ids')
       .select('external_id')
@@ -339,8 +341,9 @@ export async function POST(request: NextRequest) {
       const durationMs = startMs && endMs ? endMs - startMs : null
       const estimatedCost = (bytesProcessed / 1_099_511_627_776) * 5.0
 
+      const usageSupabase = getAdminClient()
       Promise.resolve(
-        supabase.from('bigquery_query_logs').insert({
+        usageSupabase.from('bigquery_query_logs').insert({
           user_id: auth.user.id,
           partner_id,
           partner_name: clientId,
@@ -353,10 +356,10 @@ export async function POST(request: NextRequest) {
         })
       ).then((result) => {
         if (result && typeof result === 'object' && 'error' in result && result.error) {
-          console.error('[bq-usage-log] Insert failed:', result.error)
+          log.error('Usage log insert failed', result.error)
         }
-      }).catch((err) => {
-        console.error('[bq-usage-log] Unexpected error:', err)
+      }).catch((err: unknown) => {
+        log.error('Usage log unexpected error', err)
       })
     }).catch(() => {})
 
@@ -432,12 +435,12 @@ export async function POST(request: NextRequest) {
     serverCache.set(cacheKey, { data: responseData, timestamp: Date.now() })
 
     return apiSuccess(responseData, 200, rateLimitHeaders(rateLimit))
-  } catch (error) {
+  } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error)
-    console.error('[bigquery-query] Error:', detail)
+    log.error('BigQuery query failed', { detail })
 
     if (process.env.NODE_ENV !== 'production') {
-      return apiError('INTERNAL_ERROR', `BigQuery query failed: ${detail}`, 500)
+      return apiError(ErrorCodes.INTERNAL_ERROR, `BigQuery query failed: ${detail}`, 500)
     }
 
     return ApiErrors.internal()

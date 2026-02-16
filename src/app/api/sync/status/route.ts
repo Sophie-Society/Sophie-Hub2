@@ -1,8 +1,10 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:sync:status')
 
 /**
  * GET /api/sync/status
@@ -11,9 +13,11 @@ const supabase = getAdminClient()
  * Used by the UI polling mechanism to detect when syncs complete
  * even if the original fetch response is lost (long-running requests).
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
+
+  const supabase = getAdminClient()
 
   try {
     const { count, error } = await supabase
@@ -22,7 +26,7 @@ export async function GET() {
       .eq('status', 'running')
 
     if (error) {
-      console.error('Error checking sync status:', error)
+      log.error('Error checking sync status', error)
       return ApiErrors.database(error.message)
     }
 
@@ -31,8 +35,8 @@ export async function GET() {
     }, 200, {
       'Cache-Control': 'no-store',
     })
-  } catch (error) {
-    console.error('Error in GET /api/sync/status:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/sync/status', error)
     return ApiErrors.internal()
   }
 }

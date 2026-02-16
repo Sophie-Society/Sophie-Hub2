@@ -6,12 +6,15 @@
  * Calls computeAllChannels from analytics.ts.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { computeAllChannels } from '@/lib/slack/analytics'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:recompute')
 
 const BodySchema = z.object({
   channel_id: z.string().optional(),
@@ -19,7 +22,7 @@ const BodySchema = z.object({
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date_to must be YYYY-MM-DD'),
 })
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     const { channel_id, date_from, date_to } = validation.data
 
-    console.log(
+    log.info(
       `Analytics recompute triggered by ${auth.user.email}: ` +
       `${date_from} to ${date_to}${channel_id ? ` (channel: ${channel_id})` : ' (all channels)'}`
     )
@@ -51,8 +54,8 @@ export async function POST(request: NextRequest) {
       date_range: { from: date_from, to: date_to },
       channel_id: channel_id || null,
     })
-  } catch (error) {
-    console.error('POST analytics/recompute error:', error)
+  } catch (error: unknown) {
+    log.error('POST analytics/recompute error:', error)
     return ApiErrors.internal()
   }
 }

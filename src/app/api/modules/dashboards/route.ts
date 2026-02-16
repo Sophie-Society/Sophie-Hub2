@@ -5,13 +5,12 @@
  * POST: Create a new dashboard (admin only)
  */
 
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, ApiErrors, apiValidationError, ErrorCodes } from '@/lib/api/response'
 import { z } from 'zod'
-
-const supabase = getAdminClient()
 
 const ListQuerySchema = z.object({
   module_id: z.string().uuid().optional(),
@@ -19,11 +18,12 @@ const ListQuerySchema = z.object({
   is_template: z.enum(['true', 'false']).optional(),
 })
 
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const { searchParams } = new URL(request.url)
     const params = {
       module_id: searchParams.get('module_id') || undefined,
@@ -72,11 +72,12 @@ const CreateDashboardSchema = z.object({
   date_range_default: z.enum(['7d', '30d', '90d', 'custom']).optional().default('30d'),
 })
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
   try {
+    const supabase = getAdminClient()
     const body = await request.json()
     const validation = CreateDashboardSchema.safeParse(body)
     if (!validation.success) {
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (!module) {
-      return apiError('NOT_FOUND', 'Module not found', 404)
+      return apiError(ErrorCodes.NOT_FOUND, 'Module not found', 404)
     }
 
     const { data: dashboard, error } = await supabase

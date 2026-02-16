@@ -1,8 +1,10 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:feedback:vote')
 
 /**
  * POST /api/feedback/[id]/vote
@@ -11,13 +13,15 @@ const supabase = getAdminClient()
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   const { id } = await params
 
   try {
+    const supabase = getAdminClient()
+
     // Check if feedback exists
     const { data: feedback, error: feedbackError } = await supabase
       .from('feedback')
@@ -50,7 +54,7 @@ export async function POST(
       })
 
     if (voteError) {
-      console.error('Error adding vote:', voteError)
+      log.error('Error adding vote', voteError)
       return ApiErrors.database(voteError.message)
     }
 
@@ -65,8 +69,8 @@ export async function POST(
       voted: true,
       vote_count: updated?.vote_count || 1
     }, 201)
-  } catch (error) {
-    console.error('Error in POST /api/feedback/[id]/vote:', error)
+  } catch (error: unknown) {
+    log.error('Error in POST /api/feedback/[id]/vote', error)
     return ApiErrors.internal()
   }
 }
@@ -78,13 +82,15 @@ export async function POST(
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   const { id } = await params
 
   try {
+    const supabase = getAdminClient()
+
     // Check if user has voted
     const { data: existingVote } = await supabase
       .from('feature_votes')
@@ -105,7 +111,7 @@ export async function DELETE(
       .eq('user_email', auth.user.email)
 
     if (deleteError) {
-      console.error('Error removing vote:', deleteError)
+      log.error('Error removing vote', deleteError)
       return ApiErrors.database(deleteError.message)
     }
 
@@ -120,8 +126,8 @@ export async function DELETE(
       voted: false,
       vote_count: updated?.vote_count || 0
     })
-  } catch (error) {
-    console.error('Error in DELETE /api/feedback/[id]/vote:', error)
+  } catch (error: unknown) {
+    log.error('Error in DELETE /api/feedback/[id]/vote', error)
     return ApiErrors.internal()
   }
 }
@@ -133,13 +139,15 @@ export async function DELETE(
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   const { id } = await params
 
   try {
+    const supabase = getAdminClient()
+
     const { data: vote } = await supabase
       .from('feature_votes')
       .select('id')
@@ -148,8 +156,8 @@ export async function GET(
       .single()
 
     return apiSuccess({ voted: !!vote })
-  } catch (error) {
-    console.error('Error in GET /api/feedback/[id]/vote:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/feedback/[id]/vote', error)
     return ApiErrors.internal()
   }
 }

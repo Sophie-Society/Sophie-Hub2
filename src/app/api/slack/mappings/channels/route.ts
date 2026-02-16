@@ -5,13 +5,16 @@
  * Source: 'slack_channel', entity_type: 'partners'
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateChannelsCache } from '@/lib/connectors/slack-cache'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:channels')
 
 const CreateMappingSchema = z.object({
   partner_id: z.string().uuid('partner_id must be a valid UUID'),
@@ -22,7 +25,7 @@ const CreateMappingSchema = z.object({
 /**
  * GET — Fetch all channel ↔ partner mappings
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -39,7 +42,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching channel-partner mappings:', error)
+      log.error('Error fetching channel-partner mappings', error)
       return ApiErrors.database()
     }
 
@@ -67,8 +70,8 @@ export async function GET() {
     })) || []
 
     return apiSuccess({ mappings: enriched, count: enriched.length })
-  } catch (error) {
-    console.error('GET channel-partner mappings error:', error)
+  } catch (error: unknown) {
+    log.error('GET channel-partner mappings error', error)
     return ApiErrors.internal()
   }
 }
@@ -76,7 +79,7 @@ export async function GET() {
 /**
  * POST — Create or update a channel ↔ partner mapping
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -122,7 +125,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error saving channel-partner mapping:', error)
+      log.error('Error saving channel-partner mapping', error)
       return ApiErrors.database()
     }
 
@@ -145,8 +148,8 @@ export async function POST(request: NextRequest) {
         partner_name: partner.brand_name,
       },
     }, 201)
-  } catch (error) {
-    console.error('POST channel-partner mapping error:', error)
+  } catch (error: unknown) {
+    log.error('POST channel-partner mapping error', error)
     return ApiErrors.internal()
   }
 }
@@ -154,7 +157,7 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE — Remove a channel ↔ partner mapping
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -165,7 +168,7 @@ export async function DELETE(request: NextRequest) {
     const mappingId = searchParams.get('id')
 
     if (!mappingId) {
-      return apiError('VALIDATION_ERROR', 'Mapping ID is required', 400)
+      return apiError(ErrorCodes.VALIDATION_ERROR, 'Mapping ID is required', 400)
     }
 
     const supabase = getAdminClient()
@@ -185,7 +188,7 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'slack_channel')
 
     if (error) {
-      console.error('Error deleting channel-partner mapping:', error)
+      log.error('Error deleting channel-partner mapping', error)
       return ApiErrors.database()
     }
 
@@ -200,8 +203,8 @@ export async function DELETE(request: NextRequest) {
     invalidateChannelsCache()
 
     return apiSuccess({ deleted: true })
-  } catch (error) {
-    console.error('DELETE channel-partner mapping error:', error)
+  } catch (error: unknown) {
+    log.error('DELETE channel-partner mapping error', error)
     return ApiErrors.internal()
   }
 }

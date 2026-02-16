@@ -1,11 +1,13 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { google } from 'googleapis'
+import { createLogger } from '@/lib/logger'
 
-const supabase = getAdminClient()
+const log = createLogger('api:partners:source-url')
 
 interface SourceUrlResponse {
   spreadsheet_url: string | null
@@ -57,7 +59,7 @@ function parseWeeklyColumnDate(columnName: string): Date | null {
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -76,6 +78,8 @@ export async function GET(
   const session = await getServerSession(authOptions)
 
   try {
+    const supabase = getAdminClient()
+
     // 1. Get the partner
     const { data: partner, error: partnerError } = await supabase
       .from('partners')
@@ -175,7 +179,7 @@ export async function GET(
     let cellReference: string | null = null
     let tabGid: number | null = null
 
-    console.log(`[source-url] Looking up: ${partner.brand_name}, keyColumn: ${sourceKeyColumn}, hasToken: ${!!session?.accessToken}`)
+    log.debug(`Looking up: ${partner.brand_name}, keyColumn: ${sourceKeyColumn}, hasToken: ${!!session?.accessToken}`)
 
     if (session?.accessToken && keyValue) {
       try {
@@ -202,7 +206,7 @@ export async function GET(
         })
 
         const rows = dataResponse.data.values || []
-        console.log(`[source-url] Fetched ${rows.length} rows, headerRow: ${headerRow}`)
+        log.debug(`Fetched ${rows.length} rows, headerRow: ${headerRow}`)
 
         if (rows.length > 0) {
           const headers = rows[0] as string[]
@@ -218,7 +222,7 @@ export async function GET(
             }
           }
 
-          console.log(`[source-url] Key column index: ${keyColIndex}, headers sample: ${headers.slice(0, 5).join(', ')}`)
+          log.debug(`Key column index: ${keyColIndex}, headers sample: ${headers.slice(0, 5).join(', ')}`)
 
           if (keyColIndex !== -1) {
             // Find the partner's row
@@ -247,7 +251,7 @@ export async function GET(
                   }
                 }
 
-                console.log(`[source-url] Found row ${rowNumber}, latestColIndex: ${latestColIndex}`)
+                log.debug(`Found row ${rowNumber}, latestColIndex: ${latestColIndex}`)
 
                 if (latestColIndex !== null) {
                   columnLetter = columnIndexToLetter(latestColIndex)
@@ -260,13 +264,13 @@ export async function GET(
           }
         }
 
-        console.log(`[source-url] Result - Partner: ${partner.brand_name}, Row: ${rowNumber}, Cell: ${cellReference}, GID: ${tabGid}`)
+        log.debug(`Result - Partner: ${partner.brand_name}, Row: ${rowNumber}, Cell: ${cellReference}, GID: ${tabGid}`)
 
-      } catch (error) {
-        console.error('[source-url] Error fetching sheet data:', error)
+      } catch (error: unknown) {
+        log.error('Error fetching sheet data', error)
       }
     } else {
-      console.log(`[source-url] Skipping lookup - no accessToken or keyValue`)
+      log.debug('Skipping lookup - no accessToken or keyValue')
     }
 
     // 5. Build the URL
@@ -293,8 +297,8 @@ export async function GET(
       cell_reference: cellReference,
     } satisfies SourceUrlResponse)
 
-  } catch (error) {
-    console.error('Error in GET /api/partners/[id]/source-url:', error)
+  } catch (error: unknown) {
+    log.error('Error in GET /api/partners/[id]/source-url', error)
     return ApiErrors.internal()
   }
 }

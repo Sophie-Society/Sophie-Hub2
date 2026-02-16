@@ -5,12 +5,16 @@
  * Returns the most recent sync run record and channel-level details.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 
-export async function GET() {
+const log = createLogger('api:slack:sync:status')
+
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -26,7 +30,7 @@ export async function GET() {
       .maybeSingle()
 
     if (runError) {
-      console.error('Error fetching sync run:', runError)
+      log.error('Error fetching sync run', runError)
       return ApiErrors.database()
     }
 
@@ -38,7 +42,7 @@ export async function GET() {
       .order('last_synced_at', { ascending: false, nullsFirst: false })
 
     if (channelsError) {
-      console.error('Error fetching channel sync state:', channelsError)
+      log.error('Error fetching channel sync state', channelsError)
       return ApiErrors.database()
     }
 
@@ -65,8 +69,8 @@ export async function GET() {
       channels: enrichedChannels,
       total_mapped_channels: enrichedChannels.length,
     })
-  } catch (error) {
-    console.error('GET sync/status error:', error)
+  } catch (error: unknown) {
+    log.error('GET sync/status error', error)
     return ApiErrors.internal()
   }
 }

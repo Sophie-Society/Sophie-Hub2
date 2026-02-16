@@ -1,10 +1,13 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiSuccess, apiError, apiValidationError } from '@/lib/api/response'
+import { apiSuccess, apiError, apiValidationError, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { ATTACHMENT_URL_VALIDATION_MESSAGE, isAllowedAttachmentUrl } from '@/lib/security/attachment-url'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:feedback:comments')
 
 const AttachmentSchema = z.object({
   type: z.enum(['image', 'drawing', 'file']),
@@ -34,7 +37,7 @@ const CommentSchema = z.object({
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) {
     return auth.response
@@ -62,8 +65,8 @@ export async function GET(
   const { data: comments, error } = await query
 
   if (error) {
-    console.error('Failed to fetch comments:', error)
-    return apiError('DATABASE_ERROR', 'Failed to fetch comments', 500)
+    log.error('Failed to fetch comments', error)
+    return apiError(ErrorCodes.DATABASE_ERROR, 'Failed to fetch comments', 500)
   }
 
   // Organize comments into threads (top-level and replies)
@@ -97,7 +100,7 @@ export async function GET(
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) {
     return auth.response
@@ -110,7 +113,7 @@ export async function POST(
   try {
     body = await request.json()
   } catch {
-    return apiError('INVALID_JSON', 'Invalid JSON in request body', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'Invalid JSON in request body', 400)
   }
 
   const validation = CommentSchema.safeParse(body)
@@ -126,7 +129,7 @@ export async function POST(
 
   // Non-admins cannot create internal comments
   if (is_internal && !isAdmin) {
-    return apiError('FORBIDDEN', 'Only admins can create internal comments', 403)
+    return apiError(ErrorCodes.FORBIDDEN, 'Only admins can create internal comments', 403)
   }
 
   const supabase = getAdminClient()
@@ -149,7 +152,7 @@ export async function POST(
       .single()
 
     if (!parentComment || parentComment.feedback_id !== id) {
-      return apiError('NOT_FOUND', 'Parent comment not found', 404)
+      return apiError(ErrorCodes.NOT_FOUND, 'Parent comment not found', 404)
     }
   }
 
@@ -169,8 +172,8 @@ export async function POST(
     .single()
 
   if (error) {
-    console.error('Failed to add comment:', error)
-    return apiError('DATABASE_ERROR', 'Failed to add comment', 500)
+    log.error('Failed to add comment', error)
+    return apiError(ErrorCodes.DATABASE_ERROR, 'Failed to add comment', 500)
   }
 
   return apiSuccess({ comment }, 201)
@@ -184,7 +187,7 @@ export async function DELETE(
   request: NextRequest,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -194,7 +197,7 @@ export async function DELETE(
   const commentId = url.searchParams.get('commentId')
 
   if (!commentId) {
-    return apiError('VALIDATION_ERROR', 'commentId is required', 400)
+    return apiError(ErrorCodes.VALIDATION_ERROR, 'commentId is required', 400)
   }
 
   const supabase = getAdminClient()
@@ -205,8 +208,8 @@ export async function DELETE(
     .eq('id', commentId)
 
   if (error) {
-    console.error('Failed to delete comment:', error)
-    return apiError('DATABASE_ERROR', 'Failed to delete comment', 500)
+    log.error('Failed to delete comment', error)
+    return apiError(ErrorCodes.DATABASE_ERROR, 'Failed to delete comment', 500)
   }
 
   return apiSuccess({ deleted: true })

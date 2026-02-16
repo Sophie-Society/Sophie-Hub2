@@ -6,13 +6,17 @@
  * Updates the staff table with enriched data.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
 
-export async function POST() {
+const log = createLogger('api:slack:enrich-staff')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -29,7 +33,7 @@ export async function POST() {
       .eq('source', 'slack_user')
 
     if (mappingsError) {
-      console.error('Failed to fetch mappings:', mappingsError)
+      log.error('Failed to fetch mappings:', mappingsError)
       return ApiErrors.database()
     }
 
@@ -120,7 +124,7 @@ export async function POST() {
         if (!error) {
           enriched++
         } else {
-          console.error(`Failed to enrich staff ${update.staff_id}:`, error)
+          log.error(`Failed to enrich staff ${update.staff_id}:`, error)
         }
       }
     }
@@ -131,8 +135,8 @@ export async function POST() {
       total_mappings: mappings.length,
       fields_updated: ['avatar_url', 'timezone', 'title (if empty)', 'phone (if empty)'],
     })
-  } catch (error) {
-    console.error('Staff enrichment error:', error)
+  } catch (error: unknown) {
+    log.error('Staff enrichment error:', error)
     return ApiErrors.internal()
   }
 }

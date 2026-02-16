@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth/config'
 import { searchSheets } from '@/lib/google/sheets'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
 
-export async function GET(request: NextRequest) {
+const logger = createLogger('api:sheets:search')
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions)
 
@@ -31,8 +34,8 @@ export async function GET(request: NextRequest) {
     const sheets = await searchSheets(session.accessToken, query)
 
     return NextResponse.json({ sheets })
-  } catch (error) {
-    console.error('Error searching sheets:', error)
+  } catch (error: unknown) {
+    logger.error('Error searching sheets', error)
     return NextResponse.json(
       { error: 'Failed to search sheets' },
       { status: 500 }
