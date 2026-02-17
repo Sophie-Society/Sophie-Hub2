@@ -1,0 +1,57 @@
+config {
+  type: "incremental",
+  schema: "curated",
+  name: "curated_sales",
+  description: "Canonical Selling Partner sales fact table. Source: pbi.pbi_sellingpartner_sales_unified_latest.",
+  bigquery: {
+    partitionBy: "report_date",
+    clusterBy: ["brand_id", "marketplace", "asin_child"],
+    updatePartitionFilter: "report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+  },
+  tags: ["curated", "sales", "incremental"]
+}
+
+-- =============================================================================
+-- Source columns (from pbi_sellingpartner_sales_unified_latest):
+--   client_id, date, request_time, asin_child, asin_parent,
+--   sessions, sessions_b2b, units_ordered, units_ordered_b2b,
+--   ordered_product_sales_amount, ordered_product_sales_b2b_amount,
+--   total_order_items, total_order_items_b2b
+--
+-- Dedup: PARTITION BY client_id, asin_child, date ORDER BY request_time DESC
+-- =============================================================================
+
+SELECT
+  client_id                                                 AS brand_id,
+  'US'                                                      AS marketplace,
+  date                                                      AS report_date,
+  asin_child,
+  asin_parent,
+
+  -- Traffic
+  COALESCE(sessions, 0)                                     AS sessions,
+  COALESCE(sessions_b2b, 0)                                 AS sessions_b2b,
+
+  -- Orders
+  COALESCE(units_ordered, 0)                                AS units_ordered,
+  COALESCE(units_ordered_b2b, 0)                            AS units_ordered_b2b,
+  COALESCE(total_order_items, 0)                            AS total_order_items,
+  COALESCE(total_order_items_b2b, 0)                        AS total_order_items_b2b,
+
+  -- Revenue
+  COALESCE(ordered_product_sales_amount, 0)                 AS ordered_product_sales,
+  COALESCE(ordered_product_sales_b2b_amount, 0)             AS ordered_product_sales_b2b,
+
+  -- Computed
+  SAFE_DIVIDE(units_ordered, sessions)                      AS session_cvr,
+
+  request_time,
+  CURRENT_TIMESTAMP()                                       AS _loaded_at
+
+FROM
+  `sophie-society-reporting.pbi.pbi_sellingpartner_sales_unified_latest`
+
+WHERE
+  date IS NOT NULL
+  AND client_id IS NOT NULL
+  ${when(incremental(), `AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`)}

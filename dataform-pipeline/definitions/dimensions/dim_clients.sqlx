@@ -1,0 +1,41 @@
+config {
+  type: "table",
+  schema: "curated",
+  name: "dim_clients",
+  description: "Client/brand dimension table. Full refresh from Client Admin Google Sheet via external table. Join key: brand_id = client_id.",
+  bigquery: {
+    clusterBy: ["brand_id", "marketplace"]
+  },
+  tags: ["dimension", "full_refresh"]
+}
+
+-- =============================================================================
+-- Source: Client Admin Google Sheet → BQ external table ext_client_admin
+--
+-- Columns from sheet (ClientList tab):
+--   client_id  — brand key, may include marketplace suffix (e.g. "Asiopphire CA")
+--   Brand      — clean brand name
+--   Market     — marketplace code (US, CA, MX)
+--   POD        — pod leader name
+--   Squad      — squad number
+--   Admin      — admin group
+--   Match      — whether client is matched (Yes/No)
+--   Duplicate  — formula-driven duplicate flag
+-- =============================================================================
+
+SELECT
+  TRIM(client_id)                   AS brand_id,
+  TRIM(Brand)                       AS brand_name,
+  UPPER(TRIM(Market))               AS marketplace,
+  TRIM(POD)                         AS pod,
+  SAFE_CAST(Squad AS INT64)         AS squad,
+  TRIM(Admin)                       AS admin_group,
+  UPPER(TRIM(Match)) = 'YES'        AS is_matched,
+  CURRENT_TIMESTAMP()               AS _loaded_at
+
+FROM
+  `sophie-society-reporting.pbi.ext_client_admin`
+
+WHERE
+  client_id IS NOT NULL
+  AND TRIM(client_id) != ''

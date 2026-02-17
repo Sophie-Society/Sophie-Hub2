@@ -1,0 +1,149 @@
+config {
+  type: "incremental",
+  schema: "reporting",
+  name: "rpt_brand_day",
+  description: "Daily brand-level rollup combining advertising (SP+SD+SB), sales, and refunds. Rebuilds trailing N days.",
+  bigquery: {
+    partitionBy: "report_date",
+    clusterBy: ["brand_id", "marketplace"],
+    updatePartitionFilter: "report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+  },
+  tags: ["rollup", "reporting", "incremental"],
+  dependencies: [
+    "curated_sponsored_products",
+    "curated_sponsored_display",
+    "curated_sponsored_brands",
+    "curated_sales",
+    "curated_refunds",
+    "dim_clients"
+  ]
+}
+
+-- =============================================================================
+-- rpt_brand_day: One row per brand x marketplace x date
+--
+-- Aggregates all advertising + sales + refund metrics at brand level.
+-- Note: SP/SD have ppc_units, SB does not. We include it where available.
+-- =============================================================================
+
+WITH ads AS (
+  -- SP: has ppc_units
+  SELECT brand_id, marketplace, report_date, impressions, clicks, ppc_spend, ppc_sales, ppc_orders, ppc_units
+  FROM ${ref("curated_sponsored_products")}
+  WHERE ${when(incremental(), `report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`, "TRUE")}
+
+  UNION ALL
+
+  -- SD: has ppc_units
+  SELECT brand_id, marketplace, report_date, impressions, clicks, ppc_spend, ppc_sales, ppc_orders, ppc_units
+  FROM ${ref("curated_sponsored_display")}
+  WHERE ${when(incremental(), `report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`, "TRUE")}
+
+  UNION ALL
+
+  -- SB: no ppc_units column, use 0
+  SELECT brand_id, marketplace, report_date, impressions, clicks, ppc_spend, ppc_sales, ppc_orders, 0 AS ppc_units
+  FROM ${ref("curated_sponsored_brands")}
+  WHERE ${when(incremental(), `report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`, "TRUE")}
+),
+
+ads_agg AS (
+  SELECT
+    brand_id,
+    marketplace,
+    report_date,
+    SUM(impressions)  AS total_impressions,
+    SUM(clicks)       AS total_clicks,
+    SUM(ppc_spend)    AS total_ppc_spend,
+    SUM(ppc_sales)    AS total_ppc_sales,
+    SUM(ppc_orders)   AS total_ppc_orders,
+    SUM(ppc_units)    AS total_ppc_units
+  FROM ads
+  GROUP BY brand_id, marketplace, report_date
+),
+
+sales_agg AS (
+  SELECT
+    brand_id,
+    marketplace,
+    report_date,
+    SUM(sessions)               AS total_sessions,
+    SUM(units_ordered)          AS total_units_ordered,
+    SUM(ordered_product_sales)  AS total_product_sales,
+    SUM(total_order_items)      AS total_order_items
+  FROM ${ref("curated_sales")}
+  WHERE ${when(incremental(), `report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`, "TRUE")}
+  GROUP BY brand_id, marketplace, report_date
+),
+
+refunds_agg AS (
+  SELECT
+    brand_id,
+    marketplace,
+    report_date,
+    SUM(units_refunded) AS total_units_refunded,
+    AVG(refund_rate)    AS avg_refund_rate
+  FROM ${ref("curated_refunds")}
+  WHERE ${when(incremental(), `report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`, "TRUE")}
+  GROUP BY brand_id, marketplace, report_date
+)
+
+SELECT
+  COALESCE(a.brand_id, s.brand_id, r.brand_id)           AS brand_id,
+  COALESCE(a.marketplace, s.marketplace, r.marketplace)   AS marketplace,
+  COALESCE(a.report_date, s.report_date, r.report_date)   AS report_date,
+
+  -- Advertising metrics
+  COALESCE(a.total_impressions, 0)    AS total_impressions,
+  COALESCE(a.total_clicks, 0)         AS total_clicks,
+  COALESCE(a.total_ppc_spend, 0)      AS total_ppc_spend,
+  COALESCE(a.total_ppc_sales, 0)      AS total_ppc_sales,
+  COALESCE(a.total_ppc_orders, 0)     AS total_ppc_orders,
+  COALESCE(a.total_ppc_units, 0)      AS total_ppc_units,
+
+  -- Computed ad metrics
+  SAFE_DIVIDE(a.total_ppc_spend, a.total_ppc_sales) AS acos,
+  SAFE_DIVIDE(a.total_ppc_sales, a.total_ppc_spend) AS roas,
+  SAFE_DIVIDE(a.total_ppc_spend, a.total_clicks)    AS cpc,
+  SAFE_DIVIDE(a.total_clicks, a.total_impressions)   AS ctr,
+
+  -- Sales metrics
+  COALESCE(s.total_sessions, 0)       AS total_sessions,
+  COALESCE(s.total_units_ordered, 0)  AS total_units_ordered,
+  COALESCE(s.total_product_sales, 0)  AS total_product_sales,
+  COALESCE(s.total_order_items, 0)    AS total_order_items,
+
+  -- Organic sales (total sales minus PPC-attributed sales)
+  GREATEST(COALESCE(s.total_product_sales, 0) - COALESCE(a.total_ppc_sales, 0), 0) AS organic_sales,
+
+  -- TACOS (total ad spend / total product sales)
+  SAFE_DIVIDE(a.total_ppc_spend, s.total_product_sales) AS tacos,
+
+  -- Session CVR
+  SAFE_DIVIDE(s.total_units_ordered, s.total_sessions)  AS session_cvr,
+
+  -- PPC sales as % of total sales
+  SAFE_DIVIDE(a.total_ppc_sales, s.total_product_sales) AS ppc_sales_pct,
+
+  -- Refund metrics
+  COALESCE(r.total_units_refunded, 0) AS total_units_refunded,
+  r.avg_refund_rate                    AS avg_refund_rate,
+
+  -- Dimension enrichment
+  d.brand_name,
+  d.pod,
+  d.squad,
+
+  CURRENT_TIMESTAMP() AS _loaded_at
+
+FROM ads_agg a
+FULL OUTER JOIN sales_agg s
+  ON a.brand_id = s.brand_id
+  AND a.marketplace = s.marketplace
+  AND a.report_date = s.report_date
+FULL OUTER JOIN refunds_agg r
+  ON COALESCE(a.brand_id, s.brand_id) = r.brand_id
+  AND COALESCE(a.marketplace, s.marketplace) = r.marketplace
+  AND COALESCE(a.report_date, s.report_date) = r.report_date
+LEFT JOIN ${ref("dim_clients")} d
+  ON COALESCE(a.brand_id, s.brand_id, r.brand_id) = d.brand_id

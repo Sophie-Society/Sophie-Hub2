@@ -1,0 +1,56 @@
+config {
+  type: "incremental",
+  schema: "curated",
+  name: "curated_sponsored_products",
+  description: "Canonical Sponsored Products fact table. Source: pbi.pbi_sp_par_unified_latest.",
+  bigquery: {
+    partitionBy: "report_date",
+    clusterBy: ["brand_id", "marketplace", "campaign_id"],
+    updatePartitionFilter: "report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+  },
+  tags: ["curated", "advertising", "incremental"]
+}
+
+-- =============================================================================
+-- Source columns (from pbi_sp_par_unified_latest):
+--   client_name, date, request_time, campaign_id, ad_id, campaign_name, asin,
+--   impressions, clicks, ppc_spend, ppc_sales, ppc_orders, ppc_units
+--
+-- Dedup already applied in unified view via QUALIFY ROW_NUMBER().
+-- Marketplace is encoded in per-client view name suffix (_us, _ca, etc.)
+-- and unified view unions all marketplaces. Currently all US.
+-- =============================================================================
+
+SELECT
+  client_name                             AS brand_id,
+  'US'                                    AS marketplace,
+  date                                    AS report_date,
+  CAST(campaign_id AS STRING)             AS campaign_id,
+  CAST(ad_id AS STRING)                   AS ad_id,
+  campaign_name,
+  asin,
+
+  COALESCE(impressions, 0)                AS impressions,
+  COALESCE(clicks, 0)                     AS clicks,
+  COALESCE(ppc_spend, 0)                  AS ppc_spend,
+  COALESCE(ppc_sales, 0)                  AS ppc_sales,
+  COALESCE(ppc_orders, 0)                 AS ppc_orders,
+  COALESCE(ppc_units, 0)                  AS ppc_units,
+
+  -- Computed metrics
+  SAFE_DIVIDE(ppc_spend, ppc_sales)       AS acos,
+  SAFE_DIVIDE(ppc_sales, ppc_spend)       AS roas,
+  SAFE_DIVIDE(ppc_spend, clicks)          AS cpc,
+  SAFE_DIVIDE(clicks, impressions)        AS ctr,
+  SAFE_DIVIDE(ppc_orders, clicks)         AS cvr,
+
+  request_time,
+  CURRENT_TIMESTAMP()                     AS _loaded_at
+
+FROM
+  `sophie-society-reporting.pbi.pbi_sp_par_unified_latest`
+
+WHERE
+  date IS NOT NULL
+  AND client_name IS NOT NULL
+  ${when(incremental(), `AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`)}

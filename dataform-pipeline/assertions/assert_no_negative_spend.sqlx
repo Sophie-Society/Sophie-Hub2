@@ -1,0 +1,19 @@
+config {
+  type: "assertion",
+  schema: "dataform_assertions",
+  name: "assert_no_negative_spend",
+  description: "Ad spend must never be negative in rollup tables",
+  tags: ["assertion", "data_quality"]
+}
+
+SELECT 'rpt_brand_day' AS table_name, brand_id, report_date, total_ppc_spend
+FROM ${ref("reporting", "rpt_brand_day")}
+WHERE total_ppc_spend < 0
+  AND report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+
+UNION ALL
+
+SELECT 'rpt_campaign_day' AS table_name, brand_id, report_date, total_ppc_spend
+FROM ${ref("reporting", "rpt_campaign_day")}
+WHERE total_ppc_spend < 0
+  AND report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)

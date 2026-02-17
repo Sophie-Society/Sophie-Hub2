@@ -1,0 +1,8 @@
+{
+  "name": "sophie-dataform-pipeline",
+  "version": "1.0.0",
+  "description": "Dataform pipeline for Sophie Society BigQuery reporting",
+  "dependencies": {
+    "@dataform/core": "^2.9.0"
+  }
+}

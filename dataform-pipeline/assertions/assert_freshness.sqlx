@@ -1,0 +1,17 @@
+config {
+  type: "assertion",
+  schema: "dataform_assertions",
+  name: "assert_data_freshness",
+  description: "Alert if any brand has data older than 3 days. Indicates a pipeline or source issue.",
+  tags: ["assertion", "freshness"]
+}
+
+-- Brands whose most recent report_date is more than 3 days old
+
+SELECT
+  brand_id,
+  MAX(report_date) AS latest_date,
+  DATE_DIFF(CURRENT_DATE(), MAX(report_date), DAY) AS days_stale
+FROM ${ref("reporting", "rpt_brand_day")}
+GROUP BY brand_id
+HAVING DATE_DIFF(CURRENT_DATE(), MAX(report_date), DAY) > 3

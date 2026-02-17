@@ -1,0 +1,13 @@
+config {
+  type: "assertion",
+  schema: "dataform_assertions",
+  name: "assert_unique_brand_day",
+  description: "Each (brand_id, marketplace, report_date) must be unique in rpt_brand_day",
+  tags: ["assertion", "data_quality"]
+}
+
+SELECT brand_id, marketplace, report_date, COUNT(*) AS row_count
+FROM ${ref("reporting", "rpt_brand_day")}
+WHERE report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+GROUP BY brand_id, marketplace, report_date
+HAVING COUNT(*) > 1

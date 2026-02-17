@@ -1,0 +1,17 @@
+config {
+  type: "assertion",
+  schema: "dataform_assertions",
+  name: "assert_no_future_dates",
+  description: "report_date should not be in the future (allows 1 day tolerance for timezone differences)",
+  tags: ["assertion", "data_quality"]
+}
+
+SELECT 'rpt_brand_day' AS table_name, brand_id, report_date
+FROM ${ref("reporting", "rpt_brand_day")}
+WHERE report_date > DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY)
+
+UNION ALL
+
+SELECT 'rpt_asin_day' AS table_name, brand_id, report_date
+FROM ${ref("reporting", "rpt_asin_day")}
+WHERE report_date > DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY)

@@ -1,0 +1,14 @@
+config {
+  type: "assertion",
+  schema: "dataform_assertions",
+  name: "assert_not_null_brand_id_brand_day",
+  description: "brand_id must never be NULL in rpt_brand_day",
+  tags: ["assertion", "data_quality"]
+}
+
+-- Returns rows that violate the assertion. If any rows returned → assertion fails.
+
+SELECT *
+FROM ${ref("reporting", "rpt_brand_day")}
+WHERE brand_id IS NULL
+  AND report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)

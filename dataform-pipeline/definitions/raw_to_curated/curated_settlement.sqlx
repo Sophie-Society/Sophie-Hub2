@@ -1,0 +1,49 @@
+config {
+  type: "incremental",
+  schema: "curated",
+  name: "curated_settlement",
+  description: "Canonical settlement/financial fact table. Source: TBD — no unified settlement view exists yet.",
+  bigquery: {
+    partitionBy: "report_date",
+    clusterBy: ["brand_id", "marketplace", "subcategory_id"],
+    updatePartitionFilter: "report_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+  },
+  tags: ["curated", "financial", "incremental", "TODO"]
+}
+
+-- =============================================================================
+-- TODO: Settlement does not have a unified view yet.
+--       The sync config shows bigquery_source as 'TBD'.
+--
+-- Expected columns from Supabase schema (rpt_settlement):
+--   client_name, posted_date, subcategory_id, amount_type,
+--   amount_description, amount, report_start_date, report_end_date,
+--   daton_batch_id, report_request_time
+--
+-- When the unified settlement view is created, update FROM clause.
+-- =============================================================================
+
+SELECT
+  client_name                             AS brand_id,
+  'US'                                    AS marketplace,
+  posted_date                             AS report_date,
+  subcategory_id,
+  amount_type,
+  amount_description,
+
+  COALESCE(amount, 0)                     AS amount,
+
+  report_start_date,
+  report_end_date,
+  daton_batch_id,
+  report_request_time,
+  CURRENT_TIMESTAMP()                     AS _loaded_at
+
+FROM
+  -- TODO: Replace with actual unified settlement view once created
+  `sophie-society-reporting.pbi.pbi_settlement_unified_latest`
+
+WHERE
+  posted_date IS NOT NULL
+  AND client_name IS NOT NULL
+  ${when(incremental(), `AND posted_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${dataform.projectConfig.vars.rolling_window_days} DAY)`)}

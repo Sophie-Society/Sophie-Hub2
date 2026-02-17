@@ -1,0 +1,24 @@
+config {
+  type: "operations",
+  schema: "admin",
+  name: "reporting_freshness_ddl",
+  description: "Creates the admin.reporting_freshness table if it does not exist.",
+  hasOutput: false,
+  tags: ["admin", "freshness"]
+}
+
+-- =============================================================================
+-- admin.reporting_freshness
+--
+-- Tracks data freshness per brand after each successful pipeline run.
+-- Updated at the end of every Dataform execution via update_freshness.sqlx.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS `${dataform.projectConfig.defaultDatabase}.admin.reporting_freshness` (
+  brand_id             STRING     NOT NULL,
+  data_fresh_through   DATE       NOT NULL,
+  last_refresh_at      TIMESTAMP  NOT NULL,
+  pipeline_run_id      STRING,
+  notes                STRING,
+  _loaded_at           TIMESTAMP  DEFAULT CURRENT_TIMESTAMP()
+);
