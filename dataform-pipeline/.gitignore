@@ -1,6 +1,0 @@
-node_modules/
-.df-credentials.json
-*.tfstate
-*.tfstate.backup
-.terraform/
-.env
