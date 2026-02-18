@@ -33,24 +33,34 @@ export const CACHE = {
 export const BIGQUERY = {
   /** GCP project ID */
   PROJECT_ID: 'sophie-society-reporting',
-  /** Dataset containing unified views */
+  /** Dataset containing materialized tables */
   DATASET: 'pbi',
-  /** Default field used for partner identification (varies by view: client_id or client_name) */
+  /** Default field used for partner identification (varies by table: client_id or client_name) */
   PARTNER_FIELD: 'client_name',
-  /** Unified view names exposed to the app */
-  VIEWS: {
-    SPONSORED_PRODUCTS: 'pbi_sp_par_unified_latest',
-    SPONSORED_DISPLAY: 'pbi_sd_par_unified_latest',
-    SPONSORED_BRANDS: 'pbi_sb_str_unified_latest',
-    SALES: 'pbi_sellingpartner_sales_unified_latest',
-    REFUNDS: 'pbi_sellingpartner_refunds_unified_latest',
-    PRODUCTS: 'pbi_dim_products_unified_latest',
-    MATCH: 'pbi_match_unified_latest',
+  /**
+   * Materialized table names (Pedro's BQ Scheduled Queries, daily 07:00 UTC).
+   * These replace the old pbi_*_unified_latest views.
+   * See: Sophie_Society_Power_BI_Optimization_Report (Feb 2026)
+   */
+  TABLES: {
+    SPONSORED_PRODUCTS: 'pbi_sp_par_materialized',
+    SPONSORED_DISPLAY: 'pbi_sd_par_materialized',
+    SPONSORED_BRANDS: 'pbi_sb_str_materialized',
+    SALES: 'pbi_sellingpartner_sales_materialized',
+    REFUNDS: 'pbi_sellingpartner_refunds_materialized',
+    PRODUCTS: 'pbi_dim_products_materialized',
+    MATCH: 'pbi_match_v2_materialized',
+    SNS_PERFORMANCE: 'pbi_sns_performance_materialized',
+    SNS_FORECAST: 'pbi_sns_forecast_materialized',
+    INVENTORY: 'pbi_inventory_materialized',
+    SETTLEMENT: 'pbi_settlement_materialized',
+    BRIDGE: 'pbi_bridge_product_client_materialized',
+    DIM_CLIENTS: 'ext_client_admin',
   },
 } as const
 
-/** Ordered list of all BigQuery unified views */
-export const BIGQUERY_UNIFIED_VIEWS = Object.values(BIGQUERY.VIEWS)
+/** Ordered list of all BigQuery materialized tables */
+export const BIGQUERY_MATERIALIZED_TABLES = Object.values(BIGQUERY.TABLES)
 
 // =============================================================================
 // Slack
