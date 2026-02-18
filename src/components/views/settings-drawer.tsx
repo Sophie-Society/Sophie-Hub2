@@ -265,6 +265,9 @@ interface SettingsDrawerProps {
   onAddRule: (e: React.FormEvent) => void
   onDeleteRule: (ruleId: string) => void
   onReorderModules?: (reordered: Array<{ module_id: string; sort_order: number }>) => void
+  onResetModules?: () => void
+  resettingModules?: boolean
+  showModuleInternalsTools?: boolean
   addRuleState: {
     type: string
     setType: (v: string) => void
@@ -304,6 +307,9 @@ export function SettingsDrawer({
   onAddRule,
   onDeleteRule,
   onReorderModules,
+  onResetModules,
+  resettingModules,
+  showModuleInternalsTools = true,
   addRuleState,
   // Wave 4
   activeDashboardId,
@@ -623,8 +629,24 @@ export function SettingsDrawer({
                   )}
                 </div>
 
-                {displayModules.length > 0 && (
+                {showModuleInternalsTools && displayModules.length > 0 && (
                   <div className="mt-3 space-y-2 border-t border-border/50 pt-3">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 w-full text-xs"
+                      disabled={Boolean(resettingModules)}
+                      onClick={onResetModules}
+                    >
+                      {resettingModules ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        'Reset To Blank Slate'
+                      )}
+                    </Button>
+                    <p className="px-0.5 text-[10px] text-muted-foreground">
+                      Removes all module assignments from this view.
+                    </p>
                     <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Section + Widget Tools
                     </p>

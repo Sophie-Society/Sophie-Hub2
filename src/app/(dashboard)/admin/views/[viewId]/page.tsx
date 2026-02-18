@@ -20,7 +20,6 @@ import {
   Plus,
   Pencil,
   PencilOff,
-  Loader2,
 } from 'lucide-react'
 import { DeviceFrame, type PreviewMode, type TabletOrientation } from '@/components/views/device-frame'
 import { SettingsDrawer } from '@/components/views/settings-drawer'
@@ -115,7 +114,6 @@ export default function ViewBuilderPage() {
 
   // Edit mode state (Wave 4)
   const [isEditMode, setIsEditMode] = useState(false)
-  const [editModeLoading, setEditModeLoading] = useState(false)
   const [activeModuleSlug, setActiveModuleSlug] = useState<string | null>(null)
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null)
 
@@ -296,13 +294,30 @@ export default function ViewBuilderPage() {
     }
   }
 
+  async function handleResetModules() {
+    if (data.assignments.length === 0) {
+      toast.info('This view is already blank.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Reset this view to a blank slate? This removes all assigned modules.'
+    )
+    if (!confirmed) return
+
+    await data.handleResetModules()
+    setIsEditMode(false)
+    setActiveModuleSlug(null)
+    setActiveDashboardId(null)
+    sendToPreview(iframeRef.current, { type: 'editModeChanged', enabled: false })
+    sendToPreview(iframeRef.current, { type: 'refreshRequested' })
+  }
+
   // -------------------------------------------------------------------------
-  // Edit mode toggle (Wave 4: fork-on-edit)
+  // Edit mode toggle (module composition mode)
   // -------------------------------------------------------------------------
 
   async function handleToggleEditMode() {
-    if (!viewId) return
-
     if (isEditMode) {
       // Exiting edit mode
       setIsEditMode(false)
@@ -310,55 +325,18 @@ export default function ViewBuilderPage() {
       return
     }
 
-    // Entering edit mode — need to fork if on template
-    if (!activeModuleSlug) {
-      toast.error('Select a module to edit')
+    if (data.assignedModules.length === 0) {
+      toast.error('Assign at least one module to start composing this view')
       return
     }
 
-    // Find the assignment for the active module
-    const assignment = data.assignedModules.find(
-      (a) => a.module?.slug === activeModuleSlug
-    )
-    if (!assignment) {
-      toast.error('Module not assigned to this view')
-      return
-    }
-
-    setEditModeLoading(true)
-    try {
-      const res = await fetch(`/api/admin/views/${viewId}/fork-dashboard`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moduleAssignmentId: assignment.id }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err.error?.message || 'Failed to prepare dashboard for editing')
-        return
-      }
-
-      const json = await res.json()
-      const dashboardId = json.data?.dashboardId
-      if (json.data?.forked) {
-        toast.success('Dashboard forked for this view')
-        // Refresh assignments to pick up the new dashboard_id
-        await data.fetchAssignments()
-      }
-
-      setActiveDashboardId(dashboardId)
-      if (dashboardId) {
-        await data.fetchDashboard(dashboardId)
-      }
-
-      setIsEditMode(true)
-      sendToPreview(iframeRef.current, { type: 'editModeChanged', enabled: true })
-    } catch {
-      toast.error('Failed to enter edit mode')
-    } finally {
-      setEditModeLoading(false)
-    }
+    // Entering edit mode should land on Dashboard composition canvas.
+    // Module internals are opened only via explicit block selection.
+    setActiveModuleSlug(null)
+    setActiveDashboardId(null)
+    sendToPreview(iframeRef.current, { type: 'activeModuleChanged', slug: null })
+    setIsEditMode(true)
+    sendToPreview(iframeRef.current, { type: 'editModeChanged', enabled: true })
   }
 
   // -------------------------------------------------------------------------
@@ -586,12 +564,10 @@ export default function ViewBuilderPage() {
           size="sm"
           className={cn('h-8 px-2.5 gap-1.5', isEditMode && 'bg-primary text-primary-foreground')}
           onClick={handleToggleEditMode}
-          disabled={editModeLoading || previewMode === 'mobile'}
+          disabled={previewMode === 'mobile'}
           title={isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode'}
         >
-          {editModeLoading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : isEditMode ? (
+          {isEditMode ? (
             <PencilOff className="h-3.5 w-3.5" />
           ) : (
             <Pencil className="h-3.5 w-3.5" />
@@ -688,6 +664,9 @@ export default function ViewBuilderPage() {
         onAddRule={data.handleAddRule}
         onDeleteRule={data.handleDeleteRule}
         onReorderModules={handleReorderModules}
+        onResetModules={handleResetModules}
+        resettingModules={data.resettingModules}
+        showModuleInternalsTools={false}
         addRuleState={data.addRuleState}
         // Wave 4: section management
         activeDashboardId={activeDashboardId}

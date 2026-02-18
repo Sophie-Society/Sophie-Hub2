@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
-import { logModuleAssign, logModuleRemove } from '@/lib/audit/admin-audit'
+import { logModuleAssign, logModuleRemove, logViewChange } from '@/lib/audit/admin-audit'
 
 const CreateAssignmentSchema = z.object({
   module_id: z.string().uuid(),
@@ -14,6 +14,24 @@ const CreateAssignmentSchema = z.object({
 
 const DeleteAssignmentSchema = z.object({
   module_id: z.string().uuid(),
+})
+
+const UpdateModuleLayoutSchema = z.object({
+  module_id: z.string().uuid(),
+  layout: z.object({
+    grid_column: z.number().int().min(1).max(8),
+    grid_row: z.number().int().min(1),
+    col_span: z.number().int().min(1).max(8),
+    row_span: z.number().int().min(1).max(6),
+  }).superRefine((value, ctx) => {
+    if (value.grid_column + value.col_span - 1 > 8) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'layout exceeds 8-column grid',
+        path: ['col_span'],
+      })
+    }
+  }),
 })
 
 interface RouteContext {
@@ -136,22 +154,9 @@ export async function POST(request: Request, context: RouteContext) {
         : 0
     }
 
-    let resolvedDashboardId = dashboard_id || null
-    if (!resolvedDashboardId) {
-      const { data: templateDashboards, error: templateError } = await supabase
-        .from('dashboards')
-        .select('id')
-        .eq('module_id', module_id)
-        .eq('is_template', true)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-
-      if (templateError) {
-        console.error('Failed to resolve default dashboard for module:', templateError)
-      } else {
-        resolvedDashboardId = templateDashboards?.[0]?.id || null
-      }
-    }
+    // Blank-slate by default: assigning a module does not auto-attach a dashboard.
+    // Dashboards are attached explicitly via fork/edit flows.
+    const resolvedDashboardId = dashboard_id ?? null
 
     const { data: assignment, error } = await supabase
       .from('view_profile_modules')
@@ -240,6 +245,82 @@ export async function DELETE(request: Request, context: RouteContext) {
     return new Response(null, { status: 204 })
   } catch (error) {
     console.error('View module removal error:', error)
+    return ApiErrors.internal()
+  }
+}
+
+/**
+ * PATCH /api/admin/views/[viewId]/modules
+ *
+ * Update module assignment layout metadata for module-as-widget composition.
+ */
+export async function PATCH(request: Request, context: RouteContext) {
+  const auth = await requireRole(ROLES.ADMIN)
+  if (!auth.authenticated) return auth.response
+
+  try {
+    const { viewId } = await context.params
+    const supabase = getAdminClient()
+    const body = await request.json()
+    const validation = UpdateModuleLayoutSchema.safeParse(body)
+    if (!validation.success) return apiValidationError(validation.error)
+
+    const { module_id, layout } = validation.data
+
+    const { data: view, error: viewError } = await supabase
+      .from('view_profiles')
+      .select('id, slug')
+      .eq('id', viewId)
+      .single()
+
+    if (viewError || !view) return ApiErrors.notFound('View profile')
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from('view_profile_modules')
+      .select('id, config')
+      .eq('view_id', viewId)
+      .eq('module_id', module_id)
+      .maybeSingle()
+
+    if (assignmentError) {
+      return ApiErrors.database(assignmentError.message)
+    }
+
+    if (!assignment) {
+      return ApiErrors.notFound('Module assignment')
+    }
+
+    const nextConfig = {
+      ...(assignment.config && typeof assignment.config === 'object' ? assignment.config : {}),
+      layout,
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('view_profile_modules')
+      .update({ config: nextConfig })
+      .eq('id', assignment.id)
+      .select('id, view_id, module_id, dashboard_id, sort_order, config')
+      .single()
+
+    if (updateError) {
+      return ApiErrors.database(updateError.message)
+    }
+
+    void logViewChange(
+      'view.update',
+      auth.user.id,
+      auth.user.email,
+      viewId,
+      view.slug,
+      {
+        module_id,
+        module_layout: layout,
+      }
+    )
+
+    return apiSuccess({ assignment: updated })
+  } catch (error) {
+    console.error('View module layout update error:', error)
     return ApiErrors.internal()
   }
 }

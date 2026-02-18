@@ -2,7 +2,7 @@
  * /api/admin/views/[viewId]/sections/[sectionId]
  *
  * View-scoped single-section operations with isTrueAdmin gate.
- * PATCH: Rename a section
+ * PATCH: Update section metadata (title/icon)
  * DELETE: Delete a section (widgets cascade)
  */
 
@@ -12,8 +12,11 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { logSectionDelete } from '@/lib/audit/admin-audit'
 
-const RenameSectionSchema = z.object({
-  title: z.string().min(1).max(200),
+const UpdateSectionSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  icon_emoji: z.string().max(16).nullable().optional(),
+}).refine((data) => data.title !== undefined || data.icon_emoji !== undefined, {
+  message: 'At least one field must be provided',
 })
 
 interface RouteContext {
@@ -54,7 +57,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const { viewId, sectionId } = await context.params
     const supabase = getAdminClient()
     const body = await request.json()
-    const validation = RenameSectionSchema.safeParse(body)
+    const validation = UpdateSectionSchema.safeParse(body)
     if (!validation.success) return apiValidationError(validation.error)
 
     const section = await validateSectionInView(supabase, viewId, sectionId)
@@ -62,7 +65,10 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const { data: updated, error } = await supabase
       .from('dashboard_sections')
-      .update({ title: validation.data.title })
+      .update({
+        ...(validation.data.title !== undefined ? { title: validation.data.title } : {}),
+        ...(validation.data.icon_emoji !== undefined ? { icon_emoji: validation.data.icon_emoji } : {}),
+      })
       .eq('id', sectionId)
       .select()
       .single()

@@ -8,6 +8,54 @@ import { verifyPreviewToken, type PreviewSessionPayload } from '@/lib/views/prev
 import { PreviewShell } from '@/components/views/preview-shell'
 import type { PreviewModule } from '@/lib/views/module-nav'
 
+interface ModuleLayoutConfig {
+  grid_column: number
+  grid_row: number
+  col_span: number
+  row_span: number
+}
+
+function parseModuleLayout(config: unknown): ModuleLayoutConfig | null {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null
+  const layout = (config as Record<string, unknown>).layout
+  if (!layout || typeof layout !== 'object' || Array.isArray(layout)) return null
+
+  const candidate = layout as Record<string, unknown>
+  const gridColumn = Number(candidate.grid_column)
+  const gridRow = Number(candidate.grid_row)
+  const colSpan = Number(candidate.col_span)
+  const rowSpan = Number(candidate.row_span)
+
+  if (!Number.isInteger(gridColumn) || gridColumn < 1 || gridColumn > 8) return null
+  if (!Number.isInteger(gridRow) || gridRow < 1) return null
+  if (!Number.isInteger(colSpan) || colSpan < 1 || colSpan > 8) return null
+  if (!Number.isInteger(rowSpan) || rowSpan < 1 || rowSpan > 6) return null
+  if (gridColumn + colSpan - 1 > 8) return null
+
+  return {
+    grid_column: gridColumn,
+    grid_row: gridRow,
+    col_span: colSpan,
+    row_span: rowSpan,
+  }
+}
+
+function defaultModuleLayout(index: number): ModuleLayoutConfig {
+  if (index === 0) {
+    return { grid_column: 1, grid_row: 1, col_span: 8, row_span: 1 }
+  }
+
+  const idx = index - 1
+  const row = Math.floor(idx / 2) + 2
+  const col = idx % 2 === 0 ? 1 : 5
+  return {
+    grid_column: col,
+    grid_row: row,
+    col_span: 4,
+    row_span: 1,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Error component (shown for invalid/expired tokens)
 // ---------------------------------------------------------------------------
@@ -52,7 +100,7 @@ async function fetchPreviewModules(payload: PreviewSessionPayload): Promise<Prev
 
   const { data: assignments, error: assignmentsError } = await supabase
     .from('view_profile_modules')
-    .select('module_id, dashboard_id, sort_order')
+    .select('module_id, dashboard_id, sort_order, config')
     .eq('view_id', viewId)
     .order('sort_order', { ascending: true })
 
@@ -61,7 +109,7 @@ async function fetchPreviewModules(payload: PreviewSessionPayload): Promise<Prev
   const moduleIds = Array.from(new Set(assignments.map((a) => a.module_id)))
   const { data: moduleRows, error: modulesError } = await supabase
     .from('modules')
-    .select('id, slug, name, icon, color')
+    .select('id, slug, name, description, icon, color')
     .in('id', moduleIds)
 
   if (modulesError) return []
@@ -94,33 +142,42 @@ async function fetchPreviewModules(payload: PreviewSessionPayload): Promise<Prev
     if (candidates.length === 0) return null
 
     if (subjectType === 'partner' && targetId) {
-      const partnerSpecific = candidates.find((dashboard) => dashboard.partner_id === targetId)
+      // Only allow concrete partner-specific fallback.
+      // Do not fall back to shared templates for abstract audiences.
+      const partnerSpecific = candidates.find(
+        (dashboard) => dashboard.partner_id === targetId && dashboard.is_template === false
+      )
       if (partnerSpecific) return partnerSpecific.id
     }
 
-    const template = candidates.find((dashboard) => dashboard.is_template || dashboard.partner_id === null)
-    if (template) return template.id
-
-    return candidates[0]?.id || null
+    return null
   }
 
-  return assignments.map((a) => {
+  return assignments.map((a, index) => {
     const mod = moduleById.get(a.module_id) as {
       id: string
       slug: string
       name: string
+      description: string | null
       icon: string | null
       color: string | null
     } | null
+    const layout = parseModuleLayout(a.config) || defaultModuleLayout(index)
 
     return {
       moduleId: a.module_id,
       slug: mod?.slug ?? 'unknown',
       name: mod?.name ?? 'Unknown Module',
+      description: mod?.description ?? null,
       icon: mod?.icon ?? 'Blocks',
       color: mod?.color ?? 'gray',
       sortOrder: a.sort_order,
       dashboardId: pickDashboardId(a.module_id, a.dashboard_id),
+      config: (a.config as Record<string, unknown> | null) ?? null,
+      gridColumn: layout.grid_column,
+      gridRow: layout.grid_row,
+      colSpan: layout.col_span,
+      rowSpan: layout.row_span,
     }
   })
 }

@@ -159,6 +159,7 @@ export interface DashboardSection {
   id: string
   dashboard_id: string
   title: string
+  icon_emoji: string | null
   sort_order: number
   collapsed: boolean
   created_at: string

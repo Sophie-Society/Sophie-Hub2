@@ -14,7 +14,7 @@ const BRIDGE_CHANNEL = 'sophie-preview-bridge' as const
 /** Messages sent from the builder page (parent) to the preview iframe */
 export type ParentMessage =
   | { type: 'refreshRequested' }
-  | { type: 'activeModuleChanged'; slug: string }
+  | { type: 'activeModuleChanged'; slug: string | null }
   | { type: 'editModeChanged'; enabled: boolean }
   | { type: 'openWidgetConfig'; widgetId: string | null;
       sectionId: string; dashboardId: string }

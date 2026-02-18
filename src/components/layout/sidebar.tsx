@@ -192,11 +192,14 @@ export function SidebarContent({
   const roleLabel = userRole === 'admin' ? 'Admin' : userRole === 'pod_leader' ? 'PPC Strategist' : 'Staff'
   const displayName = previewIdentity?.name || session?.user?.name || 'Loading...'
   const displayRoleLabel = previewIdentity?.roleLabel || roleLabel
-  const avatarImage = previewIdentity?.image || session?.user?.image || undefined
+  const avatarImage = previewIdentity
+    ? (previewIdentity.image ?? undefined)
+    : (session?.user?.image || undefined)
   const isAdmin = !previewIdentity && userRole === 'admin'
+  const previewFooterPinned = Boolean(previewIdentity)
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={cn('flex h-full min-h-0 flex-col', previewFooterPinned && 'relative')}>
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border/40 px-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-semibold text-sm">
@@ -209,7 +212,7 @@ export function SidebarContent({
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
+      <ScrollArea className={cn('flex-1 px-3 py-4', previewFooterPinned && 'pb-24')}>
         <nav className="space-y-6">
           {filteredNav.map((section) => (
             <div key={section.title}>
@@ -266,8 +269,10 @@ export function SidebarContent({
 
       {/* User Section (hidden in preview mode) */}
       {!hideUserControls && <div className={cn(
-        'border-t border-border/40 p-3',
-        !previewIdentity && 'pb-safe'
+        'border-t border-border/40',
+        previewFooterPinned
+          ? 'absolute inset-x-0 bottom-0 z-10 bg-background/95 px-2 pt-2 pb-1 backdrop-blur'
+          : 'mt-auto p-3 pb-safe'
       )}>
         <div className="flex items-center gap-2">
           {isAdmin ? (

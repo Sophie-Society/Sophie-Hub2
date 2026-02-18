@@ -153,6 +153,7 @@ export function DashboardBuilder({ dashboard: initial, moduleSlug }: DashboardBu
       id: `temp-${Date.now()}`,
       dashboard_id: dashboard.id,
       title: `Section ${dashboard.sections.length + 1}`,
+      icon_emoji: null,
       sort_order: dashboard.sections.length,
       collapsed: false,
       created_at: new Date().toISOString(),

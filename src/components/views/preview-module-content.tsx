@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import type { PreviewModule } from '@/lib/views/module-nav'
-import type { DashboardWidget, DashboardWithChildren, DateRange } from '@/types/modules'
-import { WidgetRenderer } from '@/components/reporting/widget-renderer'
+import type { DashboardWidget, DashboardWithChildren, DateRange, WidgetDataMode } from '@/types/modules'
+import { SectionContainer } from '@/components/reporting/section-container'
+import { ShimmerBar, ShimmerGrid } from '@/components/ui/shimmer-grid'
 import { sendToParent } from '@/lib/views/preview-bridge'
 import { usePreviewContext } from './preview-context'
 
@@ -15,6 +16,10 @@ import { usePreviewContext } from './preview-context'
 interface PreviewModuleContentProps {
   module: PreviewModule
   showTitle?: boolean
+  onSectionsResolved?: (
+    moduleSlug: string,
+    sections: Array<{ id: string; title: string; iconEmoji: string | null }>
+  ) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -24,17 +29,22 @@ interface PreviewModuleContentProps {
 /**
  * Renders the content for a selected module in the preview shell.
  *
- * In v1, this shows the module's dashboard sections and widgets in read-only
- * mode. If no dashboard is assigned, shows a placeholder.
+ * Uses the same section/widget container primitives as the module builder so
+ * drag/resize snap behavior is consistent in Views preview edit mode.
  */
-export function PreviewModuleContent({ module, showTitle = true }: PreviewModuleContentProps) {
-  const { dataMode, subjectType, targetId, isEditMode, setActiveDashboardId } = usePreviewContext()
+export function PreviewModuleContent({
+  module,
+  showTitle = true,
+  onSectionsResolved,
+}: PreviewModuleContentProps) {
+  const { viewId, dataMode, subjectType, targetId, isEditMode } = usePreviewContext()
+  const sectionEditMode = isEditMode
   const [dashboard, setDashboard] = useState<DashboardWithChildren | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const effectivePartnerId = subjectType === 'partner' ? targetId || undefined : undefined
-  const effectiveDataMode = subjectType === 'partner' ? dataMode : 'snapshot'
+  const effectiveDataMode: WidgetDataMode = subjectType === 'partner' ? dataMode : 'snapshot'
 
   const defaultDateRange = useMemo<DateRange>(() => ({
     preset: (
@@ -42,31 +52,6 @@ export function PreviewModuleContent({ module, showTitle = true }: PreviewModule
       ['7d', '14d', '30d', '60d', '90d', 'mtd', 'last_month', 'ytd', '365d', 'custom'].includes(dashboard.date_range_default)
     ) ? (dashboard.date_range_default as DateRange['preset']) : '30d',
   }), [dashboard?.date_range_default])
-
-  function gridPlacement(widget: DashboardWidget): CSSProperties {
-    const colStart = Math.max(1, widget.grid_column + 1)
-    const rowStart = Math.max(1, widget.grid_row + 1)
-    const colSpan = Math.max(1, widget.col_span)
-    const rowSpan = Math.max(1, widget.row_span)
-
-    return {
-      gridColumn: `${colStart} / span ${colSpan}`,
-      gridRow: `${rowStart} / span ${rowSpan}`,
-      minHeight: `${Math.max(120, rowSpan * 110)}px`,
-    }
-  }
-
-  // Report active module to parent on mount/change (P3 from Round 12)
-  useEffect(() => {
-    sendToParent({
-      type: 'activeModuleReport',
-      moduleSlug: module.slug,
-      dashboardId: module.dashboardId || null,
-    })
-    if (module.dashboardId) {
-      setActiveDashboardId(module.dashboardId)
-    }
-  }, [module.slug, module.dashboardId, setActiveDashboardId])
 
   useEffect(() => {
     if (!module.dashboardId) {
@@ -87,12 +72,15 @@ export function PreviewModuleContent({ module, showTitle = true }: PreviewModule
       .then((json) => {
         if (!cancelled) {
           setDashboard(json.data?.dashboard ?? json.dashboard ?? null)
-          setLoading(false)
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message)
+          setError(err instanceof Error ? err.message : 'Failed to load dashboard')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
           setLoading(false)
         }
       })
@@ -102,10 +90,163 @@ export function PreviewModuleContent({ module, showTitle = true }: PreviewModule
     }
   }, [module.dashboardId])
 
+  const sortedSections = useMemo(() => {
+    if (!dashboard?.sections) return []
+    return [...dashboard.sections]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((section) => ({
+        ...section,
+        widgets: [...section.widgets].sort((a, b) => a.sort_order - b.sort_order),
+      }))
+  }, [dashboard?.sections])
+
+  useEffect(() => {
+    onSectionsResolved?.(
+      module.slug,
+      sortedSections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        iconEmoji: section.icon_emoji ?? null,
+      }))
+    )
+  }, [module.slug, onSectionsResolved, sortedSections])
+
+  const patchWidget = useCallback(async (widgetId: string, updates: Partial<DashboardWidget>) => {
+    if (!module.dashboardId) return
+    const res = await fetch(`/api/admin/views/${viewId}/widgets`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dashboardId: module.dashboardId,
+        widget_id: widgetId,
+        ...updates,
+      }),
+    })
+
+    if (!res.ok) {
+      throw new Error('Failed to update widget')
+    }
+  }, [module.dashboardId, viewId])
+
+  const deleteWidget = useCallback(async (widgetId: string) => {
+    if (!module.dashboardId) return
+    const res = await fetch(`/api/admin/views/${viewId}/widgets`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dashboardId: module.dashboardId,
+        widget_id: widgetId,
+      }),
+    })
+
+    if (!res.ok) {
+      throw new Error('Failed to delete widget')
+    }
+  }, [module.dashboardId, viewId])
+
+  function updateWidgetLocal(widgetId: string, updater: (widget: DashboardWidget) => DashboardWidget) {
+    setDashboard((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        sections: prev.sections.map((section) => ({
+          ...section,
+          widgets: section.widgets.map((widget) =>
+            widget.id === widgetId ? updater(widget) : widget
+          ),
+        })),
+      }
+    })
+  }
+
+  function removeWidgetLocal(widgetId: string) {
+    setDashboard((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        sections: prev.sections.map((section) => ({
+          ...section,
+          widgets: section.widgets.filter((widget) => widget.id !== widgetId),
+        })),
+      }
+    })
+  }
+
+  async function handleMoveWidget(widgetId: string, gridColumn: number, gridRow: number) {
+    const previous = dashboard
+    updateWidgetLocal(widgetId, (widget) => ({
+      ...widget,
+      grid_column: gridColumn,
+      grid_row: gridRow,
+    }))
+    try {
+      await patchWidget(widgetId, { grid_column: gridColumn, grid_row: gridRow })
+      sendToParent({ type: 'compositionSaved' })
+    } catch {
+      setDashboard(previous)
+      toast.error('Failed to move widget')
+    }
+  }
+
+  async function handleResizeWidget(widgetId: string, colSpan: number, rowSpan: number) {
+    const previous = dashboard
+    updateWidgetLocal(widgetId, (widget) => ({
+      ...widget,
+      col_span: colSpan,
+      row_span: rowSpan,
+    }))
+    try {
+      await patchWidget(widgetId, { col_span: colSpan, row_span: rowSpan })
+      sendToParent({ type: 'compositionSaved' })
+    } catch {
+      setDashboard(previous)
+      toast.error('Failed to resize widget')
+    }
+  }
+
+  async function handleDeleteWidget(widgetId: string) {
+    const previous = dashboard
+    removeWidgetLocal(widgetId)
+    try {
+      await deleteWidget(widgetId)
+      sendToParent({ type: 'compositionSaved' })
+    } catch {
+      setDashboard(previous)
+      toast.error('Failed to delete widget')
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        {showTitle && (
+          <div className="space-y-2">
+            <ShimmerBar width={320} height={24} />
+            <ShimmerBar width={420} height={14} />
+          </div>
+        )}
+
+        <div className="rounded-xl border border-border/50 bg-background p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShimmerBar width={14} height={14} className="rounded-full" />
+              <ShimmerBar width={160} height={18} />
+            </div>
+            <ShimmerBar width={72} height={16} />
+          </div>
+          <ShimmerGrid rows={2} columns={2} cellHeight={140} gap={12} />
+        </div>
+
+        <div className="rounded-xl border border-border/50 bg-background p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShimmerBar width={14} height={14} className="rounded-full" />
+              <ShimmerBar width={190} height={18} />
+            </div>
+            <ShimmerBar width={72} height={16} />
+          </div>
+          <ShimmerGrid rows={1} columns={2} cellHeight={120} gap={12} />
+        </div>
       </div>
     )
   }
@@ -127,7 +268,7 @@ export function PreviewModuleContent({ module, showTitle = true }: PreviewModule
             No dashboard configured for this module yet.
           </p>
           <p className="text-xs text-muted-foreground/70 mt-2">
-            Create a dashboard in Modules to see content here.
+            Select this module, then click Edit to clone/create a dashboard for this view.
           </p>
         </div>
       </div>
@@ -146,84 +287,62 @@ export function PreviewModuleContent({ module, showTitle = true }: PreviewModule
         </div>
       )}
 
-      {dashboard.sections && dashboard.sections.length > 0 ? (
+      {sortedSections.length > 0 ? (
         <div className="space-y-8">
-          {dashboard.sections.map((section) => (
-            <div key={section.id} className="space-y-3">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                {section.title}
-              </h3>
-              {section.widgets && section.widgets.length > 0 ? (
-                <div
-                  className="grid gap-4"
-                  style={{
-                    gridTemplateColumns: 'repeat(8, minmax(0, 1fr))',
-                    gridAutoRows: 'minmax(110px, auto)',
-                  }}
-                >
-                  {[...section.widgets]
-                    .sort((a, b) => a.sort_order - b.sort_order)
-                    .map((widget) => (
-                    <div
-                      key={widget.id}
-                      className={`rounded-lg border bg-card p-3 shadow-sm overflow-hidden transition-colors ${
-                        isEditMode
-                          ? 'border-primary/40 cursor-pointer hover:border-primary/70 hover:shadow-md'
-                          : 'border-border/60'
-                      }`}
-                      style={gridPlacement(widget)}
-                      onClick={isEditMode ? () => {
-                        sendToParent({
-                          type: 'widgetEditRequested',
-                          widgetId: widget.id,
-                          sectionId: section.id,
-                          dashboardId: dashboard.id,
-                        })
-                      } : undefined}
-                    >
-                      <div className="mb-2 border-b border-border/40 pb-2">
-                        <h4 className="text-sm font-medium leading-tight">{widget.title}</h4>
-                      </div>
-                      <div className="h-full min-h-[72px]">
-                        <WidgetRenderer
-                          widget={widget}
-                          dateRange={defaultDateRange}
-                          partnerId={effectivePartnerId}
-                          dataMode={effectiveDataMode}
-                          refreshTick={0}
-                          forceRefreshToken={0}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground/70">No widgets in this section.</p>
-              )}
+          {sortedSections.map((section) => {
+            const sectionForRender = sectionEditMode && section.collapsed
+              ? { ...section, collapsed: false }
+              : section
 
-              {/* Edit mode: Add Widget button per section */}
-              {isEditMode && (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/30 py-2 text-xs text-primary/70 transition-colors hover:border-primary/50 hover:text-primary hover:bg-primary/5"
-                  onClick={() => {
-                    sendToParent({
-                      type: 'addWidgetRequested',
-                      sectionId: section.id,
-                      dashboardId: dashboard.id,
-                    })
-                  }}
-                >
-                  + Add Widget
-                </button>
-              )}
+            return (
+              <div key={section.id} id={`preview-section-${section.id}`}>
+              <SectionContainer
+                section={sectionForRender}
+                dateRange={defaultDateRange}
+                partnerId={effectivePartnerId}
+                dataMode={effectiveDataMode}
+                refreshTick={0}
+                forceRefreshToken={0}
+                isEditMode={sectionEditMode}
+                onAddWidget={(sectionId) => {
+                  if (!sectionEditMode) return
+                  sendToParent({
+                    type: 'addWidgetRequested',
+                    sectionId,
+                    dashboardId: dashboard.id,
+                  })
+                }}
+                onEditWidget={(widget) => {
+                  if (!sectionEditMode) return
+                  sendToParent({
+                    type: 'widgetEditRequested',
+                    widgetId: widget.id,
+                    sectionId: section.id,
+                    dashboardId: dashboard.id,
+                  })
+                }}
+                onDeleteWidget={(widgetId) => {
+                  void handleDeleteWidget(widgetId)
+                }}
+                onToggleCollapse={() => {
+                  // Keep collapse state local in preview for now.
+                }}
+                onMoveWidget={(widgetId, col, row) => {
+                  void handleMoveWidget(widgetId, col, row)
+                }}
+                onResizeWidget={(widgetId, colSpan, rowSpan) => {
+                  void handleResizeWidget(widgetId, colSpan, rowSpan)
+                }}
+                allowCollapse={false}
+              />
             </div>
-          ))}
+            )
+          })}
         </div>
       ) : (
         <div>
           <p className="text-sm text-muted-foreground">This dashboard has no sections yet.</p>
-          {isEditMode && (
+          {sectionEditMode && (
             <p className="text-xs text-muted-foreground/70 mt-1">
               Use the Settings drawer to add sections.
             </p>

@@ -51,6 +51,7 @@ export function useViewBuilderData(viewId: string | undefined) {
   const [assignments, setAssignments] = useState<ViewModuleAssignment[]>([])
 
   const [moduleMutationId, setModuleMutationId] = useState<string | null>(null)
+  const [resettingModules, setResettingModules] = useState(false)
 
   const [metaName, setMetaName] = useState('')
   const [metaDescription, setMetaDescription] = useState('')
@@ -242,6 +243,44 @@ export function useViewBuilderData(viewId: string | undefined) {
     }
   }
 
+  async function handleResetModules() {
+    if (!viewId) return
+    if (assignments.length === 0) {
+      toast.info('This view is already blank.')
+      return
+    }
+
+    setResettingModules(true)
+
+    try {
+      const failures: string[] = []
+
+      for (const assignment of assignments) {
+        const res = await fetch(`/api/admin/views/${viewId}/modules`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ module_id: assignment.module_id }),
+        })
+
+        if (!res.ok && res.status !== 204) {
+          failures.push(assignment.module_id)
+        }
+      }
+
+      if (failures.length > 0) {
+        toast.error(`Failed to remove ${failures.length} module(s)`)
+        return
+      }
+
+      toast.success('View reset to blank slate')
+      await fetchAssignments()
+    } catch {
+      toast.error('Failed to reset modules')
+    } finally {
+      setResettingModules(false)
+    }
+  }
+
   async function handleToggleViewField(field: 'is_active' | 'is_default', value: boolean) {
     if (!viewId) return
 
@@ -373,11 +412,13 @@ export function useViewBuilderData(viewId: string | undefined) {
     refreshAll,
 
     handleToggleModule,
+    handleResetModules,
     handleToggleViewField,
     handleSaveMeta,
     handleAddRule,
     handleDeleteRule,
     moduleMutationId,
+    resettingModules,
 
     // Wave 4: dashboard composition
     activeDashboard,

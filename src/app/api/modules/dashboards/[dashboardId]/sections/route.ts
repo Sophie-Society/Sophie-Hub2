@@ -16,6 +16,7 @@ const supabase = getAdminClient()
 
 const CreateSectionSchema = z.object({
   title: z.string().min(1).max(200),
+  icon_emoji: z.string().max(16).optional().nullable(),
   sort_order: z.number().int().min(0).optional(),
 })
 
@@ -61,6 +62,7 @@ export async function POST(
       .insert({
         dashboard_id: dashboardId,
         title: validation.data.title,
+        icon_emoji: validation.data.icon_emoji ?? null,
         sort_order: sortOrder,
       })
       .select()

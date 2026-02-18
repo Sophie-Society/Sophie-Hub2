@@ -27,10 +27,16 @@ export interface PreviewModule {
   moduleId: string
   slug: string
   name: string
+  description?: string | null
   icon: string
   color: string
   sortOrder: number
   dashboardId: string | null
+  config?: Record<string, unknown> | null
+  gridColumn?: number
+  gridRow?: number
+  colSpan?: number
+  rowSpan?: number
 }
 
 // ---------------------------------------------------------------------------

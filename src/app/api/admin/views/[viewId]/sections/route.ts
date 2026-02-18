@@ -15,6 +15,7 @@ import { logSectionCreate, logSectionReorder } from '@/lib/audit/admin-audit'
 const CreateSectionSchema = z.object({
   dashboardId: z.string().uuid(),
   title: z.string().min(1).max(200),
+  icon_emoji: z.string().max(16).optional().nullable(),
   sort_order: z.number().int().min(0).optional(),
 })
 
@@ -57,7 +58,7 @@ export async function POST(request: Request, context: RouteContext) {
     const validation = CreateSectionSchema.safeParse(body)
     if (!validation.success) return apiValidationError(validation.error)
 
-    const { dashboardId, title } = validation.data
+    const { dashboardId, title, icon_emoji } = validation.data
 
     if (!(await validateDashboardInView(supabase, viewId, dashboardId))) {
       return ApiErrors.notFound('Dashboard in this view')
@@ -81,6 +82,7 @@ export async function POST(request: Request, context: RouteContext) {
       .insert({
         dashboard_id: dashboardId,
         title,
+        icon_emoji: icon_emoji ?? null,
         sort_order: sortOrder,
       })
       .select()
