@@ -1,13 +1,14 @@
-import { escapePostgrestValue } from '@/lib/api/search-utils'
-import { getAdminClient } from '@/lib/supabase/admin'
 import {
   buildPartnerTypePersistenceFields,
   CANONICAL_PARTNER_TYPE_LABELS,
   type CanonicalPartnerType,
   type PersistedPartnerTypeFields,
 } from '@/lib/partners/computed-partner-type'
-
-const supabase = getAdminClient()
+import {
+  findPartnersForReconciliation,
+  updatePartnerTypeFields,
+  type PartnerReconciliationRecord,
+} from '@/lib/repositories/partner.repository'
 
 export type PartnerTypeSource = 'staffing' | 'legacy_partner_type' | 'unknown'
 
@@ -82,23 +83,11 @@ export interface PartnerTypeReconciliationRunResult {
   }
 }
 
-type PartnerRow = {
-  id: string
-  brand_name: string
-  partner_code: string | null
-  client_name: string | null
-  pod_leader_name: string | null
-  brand_manager_name: string | null
-  source_data: Record<string, Record<string, Record<string, unknown>>> | null
+type PartnerRow = PartnerReconciliationRecord & {
   computed_partner_type: CanonicalPartnerType | null
   computed_partner_type_source: PartnerTypeSource | null
   staffing_partner_type: CanonicalPartnerType | null
-  legacy_partner_type_raw: string | null
   legacy_partner_type: CanonicalPartnerType | null
-  partner_type_matches: boolean | null
-  partner_type_is_shared: boolean | null
-  partner_type_reason: string | null
-  partner_type_computed_at: string | null
 }
 
 const PERSISTED_FIELDS_TO_COMPARE = [
@@ -170,40 +159,8 @@ function projectPartner(partner: PartnerRow): PartnerTypeReconciliationRow {
 }
 
 async function fetchPartners(limit: number, search?: string): Promise<PartnerRow[]> {
-  let query = supabase
-    .from('partners')
-    .select(`
-      id,
-      brand_name,
-      partner_code,
-      client_name,
-      pod_leader_name,
-      brand_manager_name,
-      source_data,
-      computed_partner_type,
-      computed_partner_type_source,
-      staffing_partner_type,
-      legacy_partner_type_raw,
-      legacy_partner_type,
-      partner_type_matches,
-      partner_type_is_shared,
-      partner_type_reason,
-      partner_type_computed_at
-    `)
-    .order('brand_name', { ascending: true })
-    .limit(limit)
-
-  if (search) {
-    const escaped = escapePostgrestValue(search)
-    if (escaped) {
-      query = query.or(`brand_name.ilike.${escaped},client_name.ilike.${escaped},partner_code.ilike.${escaped}`)
-    }
-  }
-
-  const { data, error } = await query
-  if (error) throw error
-
-  return (data || []) as PartnerRow[]
+  const rows = await findPartnersForReconciliation(limit, search)
+  return rows as PartnerRow[]
 }
 
 export async function listPartnerTypeReconciliation(input: PartnerTypeReconciliationListInput): Promise<PartnerTypeReconciliationListResult> {
@@ -256,24 +213,16 @@ export async function runPartnerTypeReconciliation(input: PartnerTypeReconciliat
     const computedAt = new Date().toISOString()
 
     for (const partner of targets) {
-      const { error } = await supabase
-        .from('partners')
-        .update({
-          ...partner.update_fields,
-          partner_type_computed_at: computedAt,
-        })
-        .eq('id', partner.id)
-
-      if (error) {
+      try {
+        await updatePartnerTypeFields(partner.id, partner.update_fields, computedAt)
+        updated.push(partner.id)
+      } catch (err) {
         failed.push({
           id: partner.id,
           brand_name: partner.brand_name,
-          error: error.message,
+          error: err instanceof Error ? err.message : String(err),
         })
-        continue
       }
-
-      updated.push(partner.id)
     }
   }
 

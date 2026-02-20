@@ -1,10 +1,10 @@
-import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
-import { escapePostgrestValue } from '@/lib/api/search-utils'
+import { findStaff, type StaffRecord } from '@/lib/repositories/staff.repository'
+import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:staff')
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -133,56 +133,28 @@ export async function GET(request: Request) {
 
     const { search, status, role, department, sort, order, inactive_days, limit, offset } = validation.data
 
-    let query = supabase
-      .from('staff')
-      .select(
-        'id, staff_code, full_name, email, role, department, title, status, status_tags, max_clients, current_client_count, services, hire_date, avatar_url, timezone, created_at, source_data',
-        { count: 'exact' }
-      )
-
-    // Search across full_name, email, staff_code
-    if (search) {
-      const escaped = escapePostgrestValue(search)
-      if (escaped) {
-        query = query.or(
-          `full_name.ilike.${escaped},email.ilike.${escaped},staff_code.ilike.${escaped}`
-        )
-      }
-    }
-
-    if (status) {
-      const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
-      query = query.in('status', statuses)
-    }
-
-    if (role) {
-      const roles = role.split(',').map(r => r.trim()).filter(Boolean)
-      query = query.in('role', roles)
-    }
-
-    if (department) {
-      const departments = department.split(',').map(d => d.trim()).filter(Boolean)
-      query = query.in('department', departments)
-    }
-
     const needsComputedProcessing = sort === 'google_last_login_at' || inactive_days !== undefined
     const ascending = order === 'asc'
 
-    if (needsComputedProcessing) {
-      // Pull all filtered rows for computed sorting/filtering.
-      query = query.range(0, 4999)
-    } else {
-      query = query
-        .order(sort, { ascending })
-        .range(offset, offset + limit - 1)
+    let staffResult: { data: StaffRecord[]; count: number | null }
+    try {
+      staffResult = await findStaff({
+        search,
+        statuses: status ? status.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        roles: role ? role.split(',').map(r => r.trim()).filter(Boolean) : undefined,
+        departments: department ? department.split(',').map(d => d.trim()).filter(Boolean) : undefined,
+        sort,
+        ascending,
+        needsComputedProcessing,
+        limit,
+        offset,
+      })
+    } catch (err) {
+      log.error('Error fetching staff', { err })
+      return ApiErrors.database()
     }
 
-    const { data: staff, error, count } = await query
-
-    if (error) {
-      console.error('Error fetching staff:', error)
-      return ApiErrors.database(error.message)
-    }
+    const { data: staff, count } = staffResult
 
     const normalizedStaff = (staff || []).map((member) => {
       const google_last_login_at = extractGoogleSnapshotDate(member.source_data, 'last_login_time')
@@ -228,7 +200,7 @@ export async function GET(request: Request) {
       'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
     })
   } catch (error) {
-    console.error('Error in GET /api/staff:', error)
+    log.error('Unexpected error in GET /api/staff', error)
     return ApiErrors.internal()
   }
 }

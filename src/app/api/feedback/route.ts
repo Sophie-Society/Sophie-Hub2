@@ -1,12 +1,14 @@
-import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
+import {
+  createFeedback,
+  findFeedback,
+  findUserVotes,
+} from '@/lib/repositories/feedback.repository'
 import { z } from 'zod'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:feedback')
-
-const supabase = getAdminClient()
 
 const FeedbackSchema = z.object({
   type: z.enum(['bug', 'feature', 'question']),
@@ -36,28 +38,19 @@ export async function POST(request: Request) {
 
     const { type, title, description, page_url, posthog_session_id, screenshot_data, browser_info } = validation.data
 
-    const { data, error } = await supabase
-      .from('feedback')
-      .insert({
-        type,
-        title,
-        description,
-        page_url,
-        posthog_session_id,
-        screenshot_url: screenshot_data, // Store base64 directly for now
-        browser_info,
-        submitted_by_email: auth.user.email,
-        status: 'new',
-      })
-      .select()
-      .single()
+    const feedback = await createFeedback({
+      type,
+      title,
+      description,
+      page_url,
+      posthog_session_id,
+      screenshot_url: screenshot_data,
+      browser_info,
+      submitted_by_email: auth.user.email,
+      status: 'new',
+    })
 
-    if (error) {
-      log.error('Failed to create feedback', { err: error })
-      return ApiErrors.database()
-    }
-
-    return apiSuccess({ feedback: data }, 201)
+    return apiSuccess({ feedback }, 201)
   } catch (error) {
     log.error('Unexpected error in POST /api/feedback', error)
     return ApiErrors.internal()
@@ -87,70 +80,33 @@ export async function GET(request: Request) {
   const roadmap = searchParams.get('roadmap') === 'true'
 
   try {
-    // Build query with vote_count included
-    let query = supabase
-      .from('feedback')
-      .select('*')
-
-    // Filter by type if provided
-    if (type && ['bug', 'feature', 'question'].includes(type)) {
-      query = query.eq('type', type)
-    }
-
-    // Filter by status if provided
-    if (status) {
-      query = query.eq('status', status)
-    }
-
-    // Roadmap mode: only show items on the roadmap
-    if (roadmap) {
-      query = query.in('status', ['reviewed', 'in_progress', 'resolved'])
-    }
-
-    // Filter to user's own feedback if requested
-    if (mine) {
-      query = query.eq('submitted_by_email', auth.user.email)
-    }
-
-    // Sort by votes or recent
-    if (sort === 'votes') {
-      query = query.order('vote_count', { ascending: false })
-        .order('created_at', { ascending: false })
-    } else {
-      query = query.order('created_at', { ascending: false })
-    }
-
-    const { data: feedback, error } = await query.limit(100)
-
-    if (error) {
-      log.error('Failed to fetch feedback list', { err: error })
-      return ApiErrors.database()
-    }
+    const feedback = await findFeedback({
+      type: type ?? undefined,
+      status: status ?? undefined,
+      mine,
+      userEmail: auth.user.email,
+      roadmap,
+      sort,
+    })
 
     // Get current user's votes to mark which items they've voted on
-    const feedbackIds = (feedback || []).map(f => f.id)
+    const feedbackIds = feedback.map(f => f.id as string)
     let userVotes: Set<string> = new Set()
 
     if (feedbackIds.length > 0) {
-      // H-6: destructure and check error before using data
-      const { data: votes, error: votesError } = await supabase
-        .from('feature_votes')
-        .select('feedback_id')
-        .eq('user_email', auth.user.email)
-        .in('feedback_id', feedbackIds)
-
-      if (votesError) {
-        // Non-fatal: return feedback without vote status rather than failing the whole request
-        log.warn('Failed to fetch user votes for feedback list', { err: votesError })
-      } else if (votes) {
+      try {
+        const votes = await findUserVotes(auth.user.email, feedbackIds)
         userVotes = new Set(votes.map(v => v.feedback_id))
+      } catch (err) {
+        // Non-fatal: return feedback without vote status rather than failing the whole request
+        log.warn('Failed to fetch user votes for feedback list', { err })
       }
     }
 
     // Add has_voted flag to each feedback item
-    const feedbackWithVotes = (feedback || []).map(f => ({
+    const feedbackWithVotes = feedback.map(f => ({
       ...f,
-      has_voted: userVotes.has(f.id),
+      has_voted: userVotes.has(f.id as string),
     }))
 
     return apiSuccess({ feedback: feedbackWithVotes }, 200, {
