@@ -17,6 +17,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('gws:enrich-staff')
 
 type JsonRecord = Record<string, unknown>
 type EnrichField = 'avatar_url' | 'title' | 'phone' | 'directory_snapshot'
@@ -115,7 +118,7 @@ export async function POST(request: Request) {
       .eq('source', 'google_workspace_user')
 
     if (mappingsError) {
-      console.error('Failed to fetch GWS mappings:', mappingsError)
+      log.error('Failed to fetch Google Workspace staff mappings', { err: mappingsError })
       return ApiErrors.database()
     }
 
@@ -139,7 +142,7 @@ export async function POST(request: Request) {
       .in('google_user_id', googleUserIds)
 
     if (snapError) {
-      console.error('Failed to fetch directory snapshot:', snapError)
+      log.error('Failed to fetch Google Workspace directory snapshot', { err: snapError })
       return ApiErrors.database()
     }
 
@@ -177,14 +180,17 @@ export async function POST(request: Request) {
         continue
       }
 
+      // Cat-4: .maybeSingle() — mapping may be stale and staff record may not exist
+      // C-8: .is('deleted_at', null) — skip soft-deleted staff
       const { data: existing, error: existingError } = await supabase
         .from('staff')
         .select('avatar_url, title, phone, source_data')
         .eq('id', mapping.entity_id)
-        .single()
+        .is('deleted_at', null)
+        .maybeSingle()
 
       if (existingError || !existing) {
-        console.error(`Failed to load staff record ${mapping.entity_id}:`, existingError)
+        log.warn('Staff record not found or inaccessible for enrichment', { err: existingError, staffId: mapping.entity_id })
         skipped++
         continue
       }
@@ -245,13 +251,15 @@ export async function POST(request: Request) {
         continue
       }
 
+      // H-7: .select('id') returns the mutated row without a second round-trip
       const { error: updateError } = await supabase
         .from('staff')
         .update(dbFields)
         .eq('id', mapping.entity_id)
+        .select('id')
 
       if (updateError) {
-        console.error(`Failed to enrich staff ${mapping.entity_id}:`, updateError)
+        log.error('Failed to enrich staff record', { err: updateError, staffId: mapping.entity_id })
         skipped++
         continue
       }
@@ -283,7 +291,7 @@ export async function POST(request: Request) {
         .insert(lineageRows)
       if (lineageError) {
         // Non-blocking: enrichment succeeded, but provenance write failed.
-        console.error('Failed to write Google Workspace field lineage:', lineageError)
+        log.error('Failed to write Google Workspace field lineage', { err: lineageError })
       }
     }
 
@@ -296,7 +304,7 @@ export async function POST(request: Request) {
       selected_fields: ['avatar_url', ...Array.from(selectedFields)],
     })
   } catch (error) {
-    console.error('GWS staff enrichment error:', error)
+    log.error('GWS staff enrichment error', error)
     return ApiErrors.internal()
   }
 }

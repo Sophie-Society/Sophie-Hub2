@@ -5,6 +5,9 @@ import { getTicketRange } from '@/lib/suptask/client'
 import { sanitizeError } from '@/lib/suptask/client'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('suptask:sync')
 
 const supabase = getAdminClient()
 
@@ -115,7 +118,8 @@ export async function POST(request: NextRequest) {
     const finalStatus = isFailed ? 'failed' : 'completed'
 
     const trimmedErrors = errors.slice(0, 50) // Cap stored errors
-    await supabase
+    // H-6: check error; H-7: chain .select() to return mutated row without second round-trip
+    const { error: updateRunError } = await supabase
       .from('suptask_sync_runs')
       .update({
         status: finalStatus,
@@ -126,6 +130,11 @@ export async function POST(request: NextRequest) {
         error_summary: trimmedErrors,
       })
       .eq('id', syncRunId)
+      .select('id')
+
+    if (updateRunError) {
+      log.error('Failed to update sync run status', { err: updateRunError, syncRunId, finalStatus })
+    }
 
     return apiSuccess({
       syncRunId,
@@ -140,7 +149,8 @@ export async function POST(request: NextRequest) {
     // Mark sync run as failed
     const rawMessage = err instanceof Error ? err.message : 'Unknown error'
     const safeMessage = sanitizeError(rawMessage)
-    await supabase
+    // H-6: check error; H-7: chain .select() to return mutated row without second round-trip
+    const { error: failRunError } = await supabase
       .from('suptask_sync_runs')
       .update({
         status: 'failed',
@@ -148,6 +158,11 @@ export async function POST(request: NextRequest) {
         error_summary: [{ ticketNumber: 0, error: safeMessage }],
       })
       .eq('id', syncRunId)
+      .select('id')
+
+    if (failRunError) {
+      log.error('Failed to mark sync run as failed', { err: failRunError, syncRunId })
+    }
 
     return apiError('SYNC_FAILED', safeMessage, 500)
   }

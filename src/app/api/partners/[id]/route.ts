@@ -2,6 +2,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { deduplicateLineage, type FieldLineageRow } from '@/types/lineage'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:partners')
 
 const supabase = getAdminClient()
 
@@ -30,21 +33,25 @@ export async function GET(
 
     // Run all queries in parallel
     const [partnerResult, assignmentsResult, asinsResult, statusesResult, lineageResult] = await Promise.all([
+      // Cat-4: .maybeSingle() — partner might not exist for given id; C-8: filter soft-deleted rows
       supabase
         .from('partners')
         .select('*')
         .eq('id', id)
-        .single(),
+        .is('deleted_at', null)
+        .maybeSingle(),
       supabase
         .from('partner_assignments')
         .select('id, assignment_role, is_primary, assigned_at, staff:staff_id(id, full_name, email, role)')
         .eq('partner_id', id)
         .is('unassigned_at', null)
         .order('assignment_role'),
+      // C-8: filter soft-deleted ASINs
       supabase
         .from('asins')
         .select('id, asin_code, title, status, is_parent')
         .eq('partner_id', id)
+        .is('deleted_at', null)
         .order('asin_code'),
       supabase
         .from('weekly_statuses')
@@ -60,12 +67,31 @@ export async function GET(
         .order('changed_at', { ascending: false }),
     ])
 
+    // H-6: check errors on all parallel queries before using data
     if (partnerResult.error) {
-      if (partnerResult.error.code === 'PGRST116') {
-        return ApiErrors.notFound('Partner')
-      }
-      console.error('Error fetching partner:', partnerResult.error)
+      log.error('Failed to fetch partner', { err: partnerResult.error, partnerId: id })
       return ApiErrors.database()
+    }
+
+    if (!partnerResult.data) {
+      return ApiErrors.notFound('Partner')
+    }
+
+    if (assignmentsResult.error) {
+      // Non-fatal: log and fall back to empty list so the partner detail page still loads
+      log.warn('Failed to fetch partner assignments', { err: assignmentsResult.error, partnerId: id })
+    }
+
+    if (asinsResult.error) {
+      log.warn('Failed to fetch partner ASINs', { err: asinsResult.error, partnerId: id })
+    }
+
+    if (statusesResult.error) {
+      log.warn('Failed to fetch partner weekly statuses', { err: statusesResult.error, partnerId: id })
+    }
+
+    if (lineageResult.error) {
+      log.warn('Failed to fetch partner field lineage', { err: lineageResult.error, partnerId: id })
     }
 
     // Deduplicate lineage to get most recent per field
@@ -81,7 +107,7 @@ export async function GET(
       },
     })
   } catch (error) {
-    console.error('Error in GET /api/partners/[id]:', error)
+    log.error('Unexpected error in GET /api/partners/[id]', error)
     return ApiErrors.internal()
   }
 }

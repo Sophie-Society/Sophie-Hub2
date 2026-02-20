@@ -620,6 +620,8 @@ export class SyncEngine {
           .from('staff')
           .select('*')
           .not('email', 'is', null)
+          // C-8: exclude soft-deleted staff so they are not matched or re-synced
+          .is('deleted_at', null)
 
         if (error) {
           log.error('batchFindExisting staff/email error', error.message)
@@ -641,10 +643,12 @@ export class SyncEngine {
         const chunk = keyValues.slice(i, i + SYNC.LOOKUP_CHUNK_SIZE)
 
         // Use 'in' filter for batch lookup
+        // C-8: exclude soft-deleted records so deleted partners/staff/asins are not matched
         const { data, error } = await this.supabase
           .from(entity)
           .select('*')
           .in(keyField, chunk)
+          .is('deleted_at', null)
 
         if (error) {
           log.error('batchFindExisting error', error.message)
@@ -683,10 +687,12 @@ export class SyncEngine {
     keyValue: string
   ): Promise<Record<string, unknown> | null> {
     try {
+      // C-8: exclude soft-deleted records so a deleted entity is not matched as "existing"
       const { data, error } = await this.supabase
         .from(entity)
         .select('*')
         .ilike(keyField, keyValue)
+        .is('deleted_at', null)
         .maybeSingle() // Use maybeSingle instead of single to avoid error on no match
 
       if (error) {
@@ -955,10 +961,12 @@ export class SyncEngine {
       // Look up entity ID (cached)
       let entityId = entityIdCache.get(keyValue)
       if (entityId === undefined) {
+        // C-8: exclude soft-deleted entities so deleted partners are not linked to new weekly statuses
         const { data: entity } = await this.supabase
           .from(config.tabMapping.primary_entity)
           .select('id')
           .ilike(keyMapping.target_field, keyValue)
+          .is('deleted_at', null)
           .maybeSingle()
 
         const resolvedId: string | null = entity?.id ?? null

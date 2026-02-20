@@ -2,6 +2,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:feedback')
 
 const supabase = getAdminClient()
 
@@ -50,13 +53,13 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating feedback:', error)
-      return ApiErrors.database(error.message)
+      log.error('Failed to create feedback', { err: error })
+      return ApiErrors.database()
     }
 
     return apiSuccess({ feedback: data }, 201)
   } catch (error) {
-    console.error('Error in POST /api/feedback:', error)
+    log.error('Unexpected error in POST /api/feedback', error)
     return ApiErrors.internal()
   }
 }
@@ -120,8 +123,8 @@ export async function GET(request: Request) {
     const { data: feedback, error } = await query.limit(100)
 
     if (error) {
-      console.error('Error fetching feedback:', error)
-      return ApiErrors.database(error.message)
+      log.error('Failed to fetch feedback list', { err: error })
+      return ApiErrors.database()
     }
 
     // Get current user's votes to mark which items they've voted on
@@ -129,13 +132,17 @@ export async function GET(request: Request) {
     let userVotes: Set<string> = new Set()
 
     if (feedbackIds.length > 0) {
-      const { data: votes } = await supabase
+      // H-6: destructure and check error before using data
+      const { data: votes, error: votesError } = await supabase
         .from('feature_votes')
         .select('feedback_id')
         .eq('user_email', auth.user.email)
         .in('feedback_id', feedbackIds)
 
-      if (votes) {
+      if (votesError) {
+        // Non-fatal: return feedback without vote status rather than failing the whole request
+        log.warn('Failed to fetch user votes for feedback list', { err: votesError })
+      } else if (votes) {
         userVotes = new Set(votes.map(v => v.feedback_id))
       }
     }
@@ -150,7 +157,7 @@ export async function GET(request: Request) {
       'Cache-Control': 'private, max-age=30, stale-while-revalidate=120',
     })
   } catch (error) {
-    console.error('Error in GET /api/feedback:', error)
+    log.error('Unexpected error in GET /api/feedback', error)
     return ApiErrors.internal()
   }
 }
