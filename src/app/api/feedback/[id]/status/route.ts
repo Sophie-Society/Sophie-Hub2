@@ -3,6 +3,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { ROLES } from '@/lib/auth/roles'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:feedback:status')
 
 const supabase = getAdminClient()
 
@@ -50,7 +53,7 @@ export async function PATCH(
       .single()
 
     if (error) {
-      console.error('Error updating feedback status:', error)
+      log.error('Error updating feedback status', error)
       return ApiErrors.database(error.message)
     }
 
@@ -60,7 +63,7 @@ export async function PATCH(
 
     return apiSuccess({ feedback: data })
   } catch (error) {
-    console.error('Error in PATCH /api/feedback/[id]/status:', error)
+    log.error('Error in PATCH /api/feedback/[id]/status', error)
     return ApiErrors.internal()
   }
 }

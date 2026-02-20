@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { LoadMappingResponse } from '@/types/enrichment'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:mappings:load')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -23,7 +26,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Find the data source
+    // Find the data source — select('*') intentional: all columns spread into LoadMappingResponse.dataSource
     let query = supabase.from('data_sources').select('*')
 
     if (dataSourceId) {
@@ -42,6 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Load tab mappings with their column mappings and patterns
+    // select('*') intentional: all columns spread into LoadMappingResponse.tabMappings via ...tab
     const { data: tabMappings, error: tabError } = await supabase
       .from('tab_mappings')
       .select('*')
@@ -56,11 +60,13 @@ export async function GET(request: NextRequest) {
 
     const [allMappingsResult, allPatternsResult] = tabIds.length > 0
       ? await Promise.all([
+          // select('*') intentional: all columns spread into LoadMappingResponse columnMappings arrays
           supabase
             .from('column_mappings')
             .select('*')
             .in('tab_mapping_id', tabIds)
             .order('source_column_index'),
+          // select('*') intentional: all columns spread into LoadMappingResponse patterns arrays
           supabase
             .from('column_patterns')
             .select('*')
@@ -102,9 +108,9 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
     })
   } catch (error) {
-    console.error('Error loading mapping:', error)
+    logger.error('Error loading mapping', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to load mapping' },
       { status: 500 }
     )
   }

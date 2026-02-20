@@ -11,11 +11,14 @@
 import { NextRequest } from 'next/server'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { computeDailyRollingWindow } from '@/lib/slack/analytics'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:cron:slack-analytics')
 
 export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
-    console.error('Slack analytics cron: CRON_SECRET is not configured')
+    log.error('Slack analytics cron: CRON_SECRET is not configured')
     return apiError('INTERNAL_ERROR', 'Cron secret is not configured', 500)
   }
 
@@ -28,12 +31,12 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    console.log('Slack analytics cron: starting daily rolling window computation')
+    log.info('Slack analytics cron: starting daily rolling window computation')
 
     const result = await computeDailyRollingWindow()
     const durationMs = Date.now() - startTime
 
-    console.log(
+    log.info(
       `Slack analytics cron: completed in ${durationMs}ms — ` +
       `${result.computed} computed, ${result.failed} failed`
     )
@@ -46,12 +49,8 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     const durationMs = Date.now() - startTime
-    console.error(`Slack analytics cron: failed after ${durationMs}ms:`, error)
+    log.error(`Slack analytics cron: failed after ${durationMs}ms`, error)
 
-    return apiError(
-      'INTERNAL_ERROR',
-      `Analytics cron failed: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    )
+    return apiError('INTERNAL_ERROR', 'Analytics cron failed', 500)
   }
 }

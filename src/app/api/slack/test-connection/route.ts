@@ -8,6 +8,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { testConnection } from '@/lib/slack/client'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:slack:test-connection')
 
 export async function POST() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -23,9 +26,10 @@ export async function POST() {
       bot_user_id: info.bot_user_id,
     })
   } catch (error) {
+    logger.error('Slack test-connection failed', error)
     return apiSuccess({
       connected: false,
-      error: error instanceof Error ? error.message : 'Connection failed',
+      error: 'Unable to connect. Check Slack bot token configuration.',
     })
   }
 }

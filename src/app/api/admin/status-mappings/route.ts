@@ -6,6 +6,9 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { z } from 'zod'
 import { BUCKET_COLORS, BUCKET_LABELS, type StatusColorBucket } from '@/lib/status-colors'
 import { invalidateMappingsCache } from '@/lib/status-colors/cache'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:status-mappings')
 
 // Valid buckets for validation
 const VALID_BUCKETS = ['healthy', 'onboarding', 'warning', 'paused', 'offboarding', 'churned'] as const
@@ -34,7 +37,7 @@ export async function GET() {
       .order('status_pattern')
 
     if (error) {
-      console.error('Failed to fetch status mappings:', error)
+      log.error('Failed to fetch status mappings', error)
       return ApiErrors.database(error.message)
     }
 
@@ -52,7 +55,7 @@ export async function GET() {
       'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
     })
   } catch (error) {
-    console.error('Status mappings fetch error:', error)
+    log.error('Status mappings fetch error', error)
     return apiError('INTERNAL_ERROR', 'Failed to fetch status mappings', 500)
   }
 }
@@ -110,7 +113,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Failed to create status mapping:', error)
+      log.error('Failed to create status mapping', error)
       return ApiErrors.database(error.message)
     }
 
@@ -119,7 +122,7 @@ export async function POST(request: Request) {
 
     return apiSuccess({ mapping }, 201)
   } catch (error) {
-    console.error('Status mapping creation error:', error)
+    log.error('Status mapping creation error', error)
     return apiError('INTERNAL_ERROR', 'Failed to create status mapping', 500)
   }
 }

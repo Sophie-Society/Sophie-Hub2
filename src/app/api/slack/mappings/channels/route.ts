@@ -13,6 +13,9 @@ import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/r
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateChannelsCache } from '@/lib/connectors/slack-cache'
 import { SLACK } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:channels')
 
 const CreateMappingSchema = z.object({
   partner_id: z.string().uuid('partner_id must be a valid UUID'),
@@ -49,7 +52,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching channel-partner mappings:', error)
+      log.error('Error fetching channel-partner mappings', error)
       return ApiErrors.database()
     }
 
@@ -80,7 +83,7 @@ export async function GET() {
 
     return apiSuccess({ mappings: enriched, count: enriched.length })
   } catch (error) {
-    console.error('GET channel-partner mappings error:', error)
+    log.error('GET channel-partner mappings error', error)
     return ApiErrors.internal()
   }
 }
@@ -140,7 +143,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error saving channel-partner mapping:', error)
+      log.error('Error saving channel-partner mapping', error)
       return ApiErrors.database()
     }
 
@@ -164,7 +167,7 @@ export async function POST(request: NextRequest) {
       },
     }, 201)
   } catch (error) {
-    console.error('POST channel-partner mapping error:', error)
+    log.error('POST channel-partner mapping error', error)
     return ApiErrors.internal()
   }
 }
@@ -203,7 +206,7 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'slack_channel')
 
     if (error) {
-      console.error('Error deleting channel-partner mapping:', error)
+      log.error('Error deleting channel-partner mapping', error)
       return ApiErrors.database()
     }
 
@@ -219,7 +222,7 @@ export async function DELETE(request: NextRequest) {
 
     return apiSuccess({ deleted: true })
   } catch (error) {
-    console.error('DELETE channel-partner mapping error:', error)
+    log.error('DELETE channel-partner mapping error', error)
     return ApiErrors.internal()
   }
 }

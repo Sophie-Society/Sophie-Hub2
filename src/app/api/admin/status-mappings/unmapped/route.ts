@@ -2,6 +2,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:status-mappings:unmapped')
 
 /**
  * GET /api/admin/status-mappings/unmapped
@@ -93,7 +96,7 @@ export async function GET() {
       'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
     })
   } catch (error) {
-    console.error('Unmapped statuses fetch error:', error)
+    log.error('Unmapped statuses fetch error', error)
     return apiError('INTERNAL_ERROR', 'Failed to fetch unmapped statuses', 500)
   }
 }

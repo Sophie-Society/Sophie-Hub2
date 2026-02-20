@@ -3,6 +3,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:save-summary')
 
 // =============================================================================
 // Validation Schema
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (error) {
-        console.error('Error updating AI summary:', error)
+        log.error('Error updating AI summary', error)
         return ApiErrors.database()
       }
 
@@ -88,13 +91,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error creating tab mapping with AI summary:', error)
+      log.error('Error creating tab mapping with AI summary', error)
       return ApiErrors.database()
     }
 
     return apiSuccess({ tabMapping: newMapping }, 201)
   } catch (error) {
-    console.error('Error in POST /api/ai/save-summary:', error)
+    log.error('Error in POST /api/ai/save-summary', error)
     return ApiErrors.internal()
   }
 }
@@ -126,7 +129,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-      console.error('Error loading AI summary:', error)
+      log.error('Error loading AI summary', error)
       return ApiErrors.database()
     }
 
@@ -137,7 +140,7 @@ export async function GET(request: NextRequest) {
       'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
     })
   } catch (error) {
-    console.error('Error in GET /api/ai/save-summary:', error)
+    log.error('Error in GET /api/ai/save-summary', error)
     return ApiErrors.internal()
   }
 }

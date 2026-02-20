@@ -1,10 +1,16 @@
-import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors, apiError, ErrorCodes } from '@/lib/api/response'
-import { deduplicateLineage, type FieldLineageRow } from '@/types/lineage'
+import { deduplicateLineage } from '@/types/lineage'
+import { createLogger } from '@/lib/logger'
+import {
+  findStaffById,
+  findStaffAssignments,
+  findStaffFieldLineage,
+  updateStaff,
+} from '@/lib/repositories/staff.repository'
 import { z } from 'zod'
 
-const supabase = getAdminClient()
+const log = createLogger('api:staff')
 
 function normalizeStatusTag(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, '_')
@@ -44,47 +50,29 @@ export async function GET(
   try {
     const { id } = await params
 
-    const [staffResult, assignmentsResult, lineageResult] = await Promise.all([
-      supabase
-        .from('staff')
-        .select('*')
-        .eq('id', id)
-        .single(),
-      supabase
-        .from('partner_assignments')
-        .select('id, assignment_role, is_primary, partner:partner_id(id, brand_name, status)')
-        .eq('staff_id', id)
-        .is('unassigned_at', null)
-        .order('assignment_role'),
-      supabase
-        .from('field_lineage')
-        .select('field_name, source_type, source_ref, previous_value, new_value, changed_at, sync_run_id')
-        .eq('entity_type', 'staff')
-        .eq('entity_id', id)
-        .order('changed_at', { ascending: false }),
+    const [staffMember, assignments, lineageRows] = await Promise.all([
+      findStaffById(id),
+      findStaffAssignments(id),
+      findStaffFieldLineage(id),
     ])
 
-    if (staffResult.error) {
-      if (staffResult.error.code === 'PGRST116') {
-        return ApiErrors.notFound('Staff member')
-      }
-      console.error('Error fetching staff:', staffResult.error)
-      return ApiErrors.database(staffResult.error.message)
+    if (!staffMember) {
+      return ApiErrors.notFound('Staff member')
     }
 
     // Deduplicate lineage to get most recent per field
-    const lineage = deduplicateLineage((lineageResult.data || []) as FieldLineageRow[])
+    const lineage = deduplicateLineage(lineageRows)
 
     return apiSuccess({
       staff: {
-        ...staffResult.data,
-        status_tags: normalizeStatusTags(staffResult.data.status_tags),
-        assigned_partners: assignmentsResult.data || [],
+        ...staffMember,
+        status_tags: normalizeStatusTags(staffMember.status_tags),
+        assigned_partners: assignments,
         lineage,
       },
     })
   } catch (error) {
-    console.error('Error in GET /api/staff/[id]:', error)
+    log.error('Unexpected error in GET /api/staff/[id]', error)
     return ApiErrors.internal()
   }
 }
@@ -118,29 +106,20 @@ export async function PATCH(
     if (parsed.data.status !== undefined) updates.status = normalizeStatusTag(parsed.data.status)
     if (parsed.data.status_tags !== undefined) updates.status_tags = normalizeStatusTags(parsed.data.status_tags)
 
-    const { data, error } = await supabase
-      .from('staff')
-      .update(updates)
-      .eq('id', id)
-      .select('*')
-      .single()
+    const updated = await updateStaff(id, updates)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return ApiErrors.notFound('Staff member')
-      }
-      console.error('Error updating staff:', error)
-      return ApiErrors.database(error.message)
+    if (!updated) {
+      return ApiErrors.notFound('Staff member')
     }
 
     return apiSuccess({
       staff: {
-        ...data,
-        status_tags: normalizeStatusTags(data.status_tags),
+        ...updated,
+        status_tags: normalizeStatusTags(updated.status_tags),
       },
     })
   } catch (error) {
-    console.error('Error in PATCH /api/staff/[id]:', error)
+    log.error('Unexpected error in PATCH /api/staff/[id]', error)
     return ApiErrors.internal()
   }
 }

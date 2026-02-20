@@ -4,9 +4,6 @@ import { authOptions } from '@/lib/auth/config'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { isAdminEmail } from '@/lib/auth/admin-access'
 
-// Server-side Supabase client for auth lookups
-const supabase = getAdminClient()
-
 /**
  * Admin layout - protects all /admin/* routes
  * Redirects non-admin users to dashboard with error message
@@ -44,7 +41,7 @@ async function checkIsAdmin(email: string): Promise<boolean> {
   }
 
   // Look up user in staff table
-  const { data: staffUser } = await supabase
+  const { data: staffUser } = await getAdminClient()
     .from('staff')
     .select('role')
     .eq('email', email)

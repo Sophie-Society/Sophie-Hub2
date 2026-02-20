@@ -4,6 +4,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { z } from 'zod'
 import { logRuleChange } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views:rules')
 
 const supabase = getAdminClient()
 
@@ -54,7 +57,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       .single()
 
     if (error) {
-      console.error('Failed to update audience rule:', error)
+      log.error('Failed to update audience rule', error)
       return ApiErrors.database(error.message)
     }
 
@@ -62,7 +65,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return apiSuccess({ rule })
   } catch (error) {
-    console.error('Audience rule update error:', error)
+    log.error('Audience rule update error', error)
     return ApiErrors.internal()
   }
 }
@@ -94,7 +97,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
       .eq('id', ruleId)
 
     if (error) {
-      console.error('Failed to delete audience rule:', error)
+      log.error('Failed to delete audience rule', error)
       return ApiErrors.database(error.message)
     }
 
@@ -102,7 +105,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
     return new Response(null, { status: 204 })
   } catch (error) {
-    console.error('Audience rule deletion error:', error)
+    log.error('Audience rule deletion error', error)
     return ApiErrors.internal()
   }
 }

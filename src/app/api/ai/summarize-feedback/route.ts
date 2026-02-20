@@ -6,6 +6,9 @@ import { apiSuccess, apiError, apiValidationError } from '@/lib/api/response'
 import { getAnthropicApiKey } from '@/lib/settings'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:summarize-feedback')
 
 const RequestSchema = z.object({
   feedbackId: z.string().uuid('Invalid feedback ID'),
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
   try {
     anthropicKey = await getAnthropicApiKey()
   } catch {
-    console.error('Failed to get Anthropic API key')
+    log.error('Failed to get Anthropic API key')
     return apiError(
       'SERVICE_UNAVAILABLE',
       'AI is not configured. Add your Anthropic API key in Settings → API Keys.',
@@ -126,7 +129,7 @@ Reported by: ${feedback.submitted_by_email}`
       analyzedAt: now,
     })
   } catch (error) {
-    console.error('Claude API error:', error)
+    log.error('Claude API error', error)
     return apiError('AI_ERROR', 'Failed to summarize feedback', 500)
   }
 }

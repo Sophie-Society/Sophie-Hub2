@@ -1,15 +1,22 @@
-import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
-import { deduplicateLineage, type FieldLineageRow } from '@/types/lineage'
+import { deduplicateLineage } from '@/types/lineage'
+import { createLogger } from '@/lib/logger'
+import {
+  findPartnerById,
+  findPartnerAssignmentsDetail,
+  findPartnerAsins,
+  findPartnerWeeklyStatuses,
+  findPartnerFieldLineage,
+} from '@/lib/repositories/partner.repository'
 
-const supabase = getAdminClient()
+const log = createLogger('api:partners')
 
 /**
  * GET /api/partners/[id]
  *
  * Get a single partner with assignments, ASINs, and recent weekly statuses.
- * Runs 4 queries in parallel for performance.
+ * Runs queries in parallel for performance.
  * Requires authentication and partner access check (admin or assigned staff).
  */
 export async function GET(
@@ -29,59 +36,51 @@ export async function GET(
     }
 
     // Run all queries in parallel
-    const [partnerResult, assignmentsResult, asinsResult, statusesResult, lineageResult] = await Promise.all([
-      supabase
-        .from('partners')
-        .select('*')
-        .eq('id', id)
-        .single(),
-      supabase
-        .from('partner_assignments')
-        .select('id, assignment_role, is_primary, assigned_at, staff:staff_id(id, full_name, email, role)')
-        .eq('partner_id', id)
-        .is('unassigned_at', null)
-        .order('assignment_role'),
-      supabase
-        .from('asins')
-        .select('id, asin_code, title, status, is_parent')
-        .eq('partner_id', id)
-        .order('asin_code'),
-      supabase
-        .from('weekly_statuses')
-        .select('id, week_start_date, status, notes')
-        .eq('partner_id', id)
-        .order('week_start_date', { ascending: false })
-        .limit(156), // 3 years of weekly data for the Weekly Status tab
-      supabase
-        .from('field_lineage')
-        .select('field_name, source_type, source_ref, previous_value, new_value, changed_at, sync_run_id')
-        .eq('entity_type', 'partners')
-        .eq('entity_id', id)
-        .order('changed_at', { ascending: false }),
+    const [partner, assignments, asins, statuses, lineageRows] = await Promise.all([
+      findPartnerById(id).catch((err: unknown) => {
+        log.error('Failed to fetch partner', { err, partnerId: id })
+        return undefined
+      }),
+      findPartnerAssignmentsDetail(id).catch((err: unknown) => {
+        log.warn('Failed to fetch partner assignments', { err, partnerId: id })
+        return []
+      }),
+      findPartnerAsins(id).catch((err: unknown) => {
+        log.warn('Failed to fetch partner ASINs', { err, partnerId: id })
+        return []
+      }),
+      findPartnerWeeklyStatuses(id, 156).catch((err: unknown) => {
+        log.warn('Failed to fetch partner weekly statuses', { err, partnerId: id })
+        return []
+      }),
+      findPartnerFieldLineage(id).catch((err: unknown) => {
+        log.warn('Failed to fetch partner field lineage', { err, partnerId: id })
+        return []
+      }),
     ])
 
-    if (partnerResult.error) {
-      if (partnerResult.error.code === 'PGRST116') {
-        return ApiErrors.notFound('Partner')
-      }
-      console.error('Error fetching partner:', partnerResult.error)
+    if (partner === undefined) {
       return ApiErrors.database()
     }
 
+    if (!partner) {
+      return ApiErrors.notFound('Partner')
+    }
+
     // Deduplicate lineage to get most recent per field
-    const lineage = deduplicateLineage((lineageResult.data || []) as FieldLineageRow[])
+    const lineage = deduplicateLineage(lineageRows)
 
     return apiSuccess({
       partner: {
-        ...partnerResult.data,
-        assignments: assignmentsResult.data || [],
-        asins: asinsResult.data || [],
-        recent_statuses: statusesResult.data || [],
+        ...partner,
+        assignments,
+        asins,
+        recent_statuses: statuses,
         lineage,
       },
     })
   } catch (error) {
-    console.error('Error in GET /api/partners/[id]:', error)
+    log.error('Unexpected error in GET /api/partners/[id]', error)
     return ApiErrors.internal()
   }
 }

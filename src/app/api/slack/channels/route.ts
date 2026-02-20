@@ -11,6 +11,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { SLACK } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:channels')
 
 type SlackChannelType = 'partner_facing' | 'alerts' | 'internal'
 
@@ -93,7 +96,7 @@ export async function GET() {
 
     return response
   } catch (error) {
-    console.error('Failed to fetch Slack channels:', error)
+    log.error('Failed to fetch Slack channels', error)
     return ApiErrors.internal()
   }
 }

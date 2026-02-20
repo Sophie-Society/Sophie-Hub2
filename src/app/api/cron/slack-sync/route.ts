@@ -17,11 +17,14 @@ import { NextRequest } from 'next/server'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { processChunk } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:cron:slack-sync')
 
 export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
-    console.error('Slack sync cron: CRON_SECRET is not configured')
+    log.error('Slack sync cron: CRON_SECRET is not configured')
     return apiError('INTERNAL_ERROR', 'Cron secret is not configured', 500)
   }
 
@@ -46,7 +49,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (runError) {
-      console.error('Slack sync cron: error finding active run:', runError)
+      log.error('Slack sync cron: error finding active run', runError)
       return apiError('DATABASE_ERROR', 'Failed to find active sync run', 500)
     }
 
@@ -55,12 +58,12 @@ export async function POST(request: NextRequest) {
       return apiSuccess({ status: 'no_active_run', duration_ms: Date.now() - startTime })
     }
 
-    console.log(`Slack sync cron: processing chunk for run ${activeRun.id} (status: ${activeRun.status})`)
+    log.info(`Slack sync cron: processing chunk for run ${activeRun.id} (status: ${activeRun.status})`)
 
     const summary = await processChunk(activeRun.id)
     const durationMs = Date.now() - startTime
 
-    console.log(
+    log.info(
       `Slack sync cron: chunk complete in ${durationMs}ms — ` +
       `${summary.channels_synced} synced, ${summary.channels_failed} failed, ` +
       `${summary.total_messages} messages`
@@ -75,12 +78,8 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     const durationMs = Date.now() - startTime
-    console.error(`Slack sync cron: failed after ${durationMs}ms:`, error)
+    log.error(`Slack sync cron: failed after ${durationMs}ms`, error)
 
-    return apiError(
-      'INTERNAL_ERROR',
-      `Sync cron failed: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    )
+    return apiError('INTERNAL_ERROR', 'Sync cron failed', 500)
   }
 }

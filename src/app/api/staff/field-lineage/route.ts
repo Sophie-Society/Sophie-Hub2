@@ -1,6 +1,9 @@
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:staff:field-lineage')
 
 const supabase = getAdminClient()
 
@@ -41,7 +44,7 @@ export async function GET() {
       .not('target_field', 'is', null)
 
     if (error) {
-      console.error('Error fetching staff field lineage:', error)
+      log.error('Error fetching staff field lineage', error)
       return ApiErrors.database()
     }
 
@@ -79,7 +82,7 @@ export async function GET() {
 
     return apiSuccess({ lineage })
   } catch (error) {
-    console.error('Error in GET /api/staff/field-lineage:', error)
+    log.error('Error in GET /api/staff/field-lineage', error)
     return ApiErrors.internal()
   }
 }

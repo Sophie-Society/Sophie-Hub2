@@ -15,6 +15,9 @@ import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateChannelsCache } from '@/lib/connectors/slack-cache'
 import { SLACK } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:channels:auto-match')
 
 const AutoMatchSchema = z.object({
   /** Channel prefix to strip (e.g., "client-") */
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
       .order('brand_name')
 
     if (partnerError) {
-      console.error('Failed to fetch partners:', partnerError)
+      log.error('Failed to fetch partners', partnerError)
       return ApiErrors.database()
     }
 
@@ -207,7 +210,7 @@ export async function POST(request: NextRequest) {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`Channel mapping batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`Channel mapping batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
@@ -252,7 +255,7 @@ export async function POST(request: NextRequest) {
       unmatched_channels: unmatchedChannels.slice(0, 30),
     })
   } catch (error) {
-    console.error('Channel auto-match error:', error)
+    log.error('Channel auto-match error', error)
     return ApiErrors.internal()
   }
 }

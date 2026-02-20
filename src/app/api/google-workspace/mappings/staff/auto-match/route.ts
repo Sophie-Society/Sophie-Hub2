@@ -18,6 +18,9 @@ import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
 import { isStaffEligibleForAutoMapping } from '@/lib/staff/lifecycle'
 import { refreshGoogleWorkspaceStaffApprovalQueue } from '@/lib/google-workspace/staff-approval-queue'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:mappings:staff:auto-match')
 
 export async function POST() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -31,10 +34,10 @@ export async function POST() {
     // 1. Fetch all directory users from snapshot
     const { data: directoryUsers, error: dirError } = await supabase
       .from('google_workspace_directory_snapshot')
-      .select('*')
+      .select('google_user_id, primary_email, full_name, org_unit_path, title, account_type_override, aliases, is_deleted, is_suspended, is_admin')
 
     if (dirError) {
-      console.error('Failed to fetch directory snapshot:', dirError)
+      log.error('Failed to fetch directory snapshot', dirError)
       return ApiErrors.database()
     }
 
@@ -67,7 +70,7 @@ export async function POST() {
       .not('email', 'is', null)
 
     if (staffError) {
-      console.error('Failed to fetch staff:', staffError)
+      log.error('Failed to fetch staff', staffError)
       return ApiErrors.database()
     }
 
@@ -230,32 +233,44 @@ export async function POST() {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`GWS auto-match batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`GWS auto-match batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
-      // Also create alias mappings for matched users (insert-only, no transfer)
+      // Collect all alias records across all matched users, then batch upsert (avoids N+1)
+      const aliasRecords: Array<{
+        entity_type: 'staff'
+        entity_id: string
+        source: 'google_workspace_alias'
+        external_id: string
+        metadata: { alias_type: string; google_user_id: string }
+        created_by: string
+      }> = []
       for (const m of matches) {
         const gwsUser = gwsByPrimaryEmail.get(m.google_email.toLowerCase())
         if (gwsUser?.aliases) {
           for (const alias of gwsUser.aliases) {
-            await supabase
-              .from('entity_external_ids')
-              .upsert(
-                {
-                  entity_type: 'staff',
-                  entity_id: m.staff_id,
-                  source: 'google_workspace_alias',
-                  external_id: alias.toLowerCase(),
-                  metadata: { alias_type: 'alias', google_user_id: gwsUser.google_user_id },
-                  created_by: auth.user.email,
-                },
-                {
-                  onConflict: 'source,external_id',
-                  ignoreDuplicates: true, // DO NOTHING on conflict — never auto-transfer aliases
-                }
-              )
+            aliasRecords.push({
+              entity_type: 'staff',
+              entity_id: m.staff_id,
+              source: 'google_workspace_alias',
+              external_id: alias.toLowerCase(),
+              metadata: { alias_type: 'alias', google_user_id: gwsUser.google_user_id },
+              created_by: auth.user.email,
+            })
           }
+        }
+      }
+      if (aliasRecords.length > 0) {
+        const ALIAS_BATCH_SIZE = 50
+        for (let i = 0; i < aliasRecords.length; i += ALIAS_BATCH_SIZE) {
+          const batch = aliasRecords.slice(i, i + ALIAS_BATCH_SIZE)
+          await supabase
+            .from('entity_external_ids')
+            .upsert(batch, {
+              onConflict: 'source,external_id',
+              ignoreDuplicates: true, // DO NOTHING on conflict — never auto-transfer aliases
+            })
         }
       }
     }
@@ -281,7 +296,7 @@ export async function POST() {
       staff_approvals_queue: approvalQueueSync,
     })
   } catch (error) {
-    console.error('GWS staff auto-match error:', error)
+    log.error('GWS staff auto-match error', error)
     return ApiErrors.internal()
   }
 }

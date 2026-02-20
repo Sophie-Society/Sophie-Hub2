@@ -5,6 +5,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { google } from 'googleapis'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:partners:source-url')
 
 const supabase = getAdminClient()
 
@@ -192,7 +195,7 @@ export async function GET(
     let cellReference: string | null = null
     let tabGid: number | null = null
 
-    console.log(`[source-url] Looking up: ${partner.brand_name}, keyColumn: ${sourceKeyColumn}, hasToken: ${!!accessToken}`)
+    log.info(`[source-url] Looking up: ${partner.brand_name}, keyColumn: ${sourceKeyColumn}, hasToken: ${!!accessToken}`)
 
     if (accessToken && keyValue) {
       try {
@@ -219,7 +222,7 @@ export async function GET(
         })
 
         const rows = dataResponse.data.values || []
-        console.log(`[source-url] Fetched ${rows.length} rows, headerRow: ${headerRow}`)
+        log.info(`[source-url] Fetched ${rows.length} rows, headerRow: ${headerRow}`)
 
         if (rows.length > 0) {
           const headers = rows[0] as string[]
@@ -235,7 +238,7 @@ export async function GET(
             }
           }
 
-          console.log(`[source-url] Key column index: ${keyColIndex}, headers sample: ${headers.slice(0, 5).join(', ')}`)
+          log.info(`[source-url] Key column index: ${keyColIndex}, headers sample: ${headers.slice(0, 5).join(', ')}`)
 
           if (keyColIndex !== -1) {
             // Find the partner's row
@@ -264,7 +267,7 @@ export async function GET(
                   }
                 }
 
-                console.log(`[source-url] Found row ${rowNumber}, latestColIndex: ${latestColIndex}`)
+                log.info(`[source-url] Found row ${rowNumber}, latestColIndex: ${latestColIndex}`)
 
                 if (latestColIndex !== null) {
                   columnLetter = columnIndexToLetter(latestColIndex)
@@ -277,13 +280,13 @@ export async function GET(
           }
         }
 
-        console.log(`[source-url] Result - Partner: ${partner.brand_name}, Row: ${rowNumber}, Cell: ${cellReference}, GID: ${tabGid}`)
+        log.info(`[source-url] Result - Partner: ${partner.brand_name}, Row: ${rowNumber}, Cell: ${cellReference}, GID: ${tabGid}`)
 
       } catch (error) {
-        console.error('[source-url] Error fetching sheet data:', error)
+        log.error('[source-url] Error fetching sheet data', error)
       }
     } else {
-      console.log(`[source-url] Skipping lookup - no accessToken or keyValue`)
+      log.info(`[source-url] Skipping lookup - no accessToken or keyValue`)
     }
 
     // 5. Build the URL
@@ -311,7 +314,7 @@ export async function GET(
     } satisfies SourceUrlResponse)
 
   } catch (error) {
-    console.error('Error in GET /api/partners/[id]/source-url:', error)
+    log.error('Error in GET /api/partners/[id]/source-url', error)
     return ApiErrors.internal()
   }
 }

@@ -5,6 +5,9 @@ import { apiSuccess, apiError, apiValidationError } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { ATTACHMENT_URL_VALIDATION_MESSAGE, isAllowedAttachmentUrl } from '@/lib/security/attachment-url'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:feedback:comments')
 
 const AttachmentSchema = z.object({
   type: z.enum(['image', 'drawing', 'file']),
@@ -62,7 +65,7 @@ export async function GET(
   const { data: comments, error } = await query
 
   if (error) {
-    console.error('Failed to fetch comments:', error)
+    log.error('Failed to fetch comments', error)
     return apiError('DATABASE_ERROR', 'Failed to fetch comments', 500)
   }
 
@@ -169,7 +172,7 @@ export async function POST(
     .single()
 
   if (error) {
-    console.error('Failed to add comment:', error)
+    log.error('Failed to add comment', error)
     return apiError('DATABASE_ERROR', 'Failed to add comment', 500)
   }
 
@@ -205,7 +208,7 @@ export async function DELETE(
     .eq('id', commentId)
 
   if (error) {
-    console.error('Failed to delete comment:', error)
+    log.error('Failed to delete comment', error)
     return apiError('DATABASE_ERROR', 'Failed to delete comment', 500)
   }
 

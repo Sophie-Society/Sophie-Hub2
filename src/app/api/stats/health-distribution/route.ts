@@ -2,6 +2,9 @@ import { requireAuth } from '@/lib/auth/api-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { BUCKET_COLORS, BUCKET_LABELS, STATUS_BUCKETS, type StatusColorBucket } from '@/lib/status-colors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:stats:health-distribution')
 
 const PARTNER_PAGE_SIZE = 1000
 
@@ -25,6 +28,7 @@ async function fetchAllPartnersForHealth(supabase: ReturnType<typeof getAdminCli
     const { data, error } = await supabase
       .from('partners')
       .select('id, brand_name, status, source_data')
+      .order('id', { ascending: true })
       .range(offset, offset + PARTNER_PAGE_SIZE - 1)
 
     if (error) throw error
@@ -161,7 +165,7 @@ export async function GET() {
       .order('priority', { ascending: false })
 
     if (mappingsError) {
-      console.warn('status_color_mappings table not available, using fallback:', mappingsError.message)
+      log.warn('status_color_mappings table not available, using fallback', mappingsError.message)
       mappings = getFallbackMappings()
     } else {
       mappings = dbMappings || getFallbackMappings()
@@ -234,7 +238,7 @@ export async function GET() {
       lastCalculated: new Date().toISOString(),
     })
   } catch (error) {
-    console.error('Health distribution fetch error:', error)
+    log.error('Health distribution fetch error', error)
     return apiError('INTERNAL_ERROR', 'Failed to fetch health distribution', 500)
   }
 }

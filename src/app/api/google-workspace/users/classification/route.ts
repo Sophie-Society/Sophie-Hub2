@@ -14,6 +14,9 @@ import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:users:classification')
 
 const BodySchema = z.object({
   google_user_id: z.string().min(1),
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
           409
         )
       }
-      console.error('Failed to update Google account type override:', error)
+      log.error('Failed to update Google account type override', error)
       return ApiErrors.database()
     }
 
@@ -80,7 +83,7 @@ export async function POST(request: Request) {
       account_type_overridden: resolved.overridden,
     })
   } catch (error) {
-    console.error('Google account classification override error:', error)
+    log.error('Google account classification override error', error)
     return ApiErrors.internal()
   }
 }

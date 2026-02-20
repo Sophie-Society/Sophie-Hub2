@@ -8,6 +8,9 @@ import { buildPartnerTypePersistenceFields } from '@/lib/partners/computed-partn
 import { applyTransform } from '@/lib/sync/transforms'
 import type { TransformType } from '@/lib/sync/types'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:partners:sync')
 
 const supabase = getAdminClient()
 
@@ -102,7 +105,7 @@ export async function POST(
       .eq('status', 'active')
 
     if (tabError) {
-      console.error('Error fetching tab mappings:', tabError)
+      log.error('Error fetching tab mappings', tabError)
       return ApiErrors.database()
     }
 
@@ -271,7 +274,7 @@ export async function POST(
               fieldsFromThisSource.push(mapping.target_field)
             }
           } catch (error) {
-            console.error(`Transform failed for ${mapping.source_column}:`, error)
+            log.error(`Transform failed for ${mapping.source_column}`, error)
           }
         }
 
@@ -284,14 +287,14 @@ export async function POST(
         })
 
       } catch (error) {
-        console.error(`Error syncing from ${dataSource.name}:`, error)
+        log.error(`Error syncing from ${dataSource.name}`, error)
         syncResults.push({
           sourceName: dataSource.name,
           sourceType: dataSource.type,
           tabName: tabMapping.tab_name,
           success: false,
           fieldsUpdated: [],
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Failed to sync from this source',
         })
       }
     }
@@ -324,7 +327,7 @@ export async function POST(
       .eq('id', id)
 
     if (updateError) {
-      console.error('Error updating partner:', updateError)
+      log.error('Error updating partner', updateError)
       return ApiErrors.database()
     }
 
@@ -338,7 +341,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Error in POST /api/partners/[id]/sync:', error)
+    log.error('Error in POST /api/partners/[id]/sync', error)
 
     if (error instanceof Error) {
       if (error.message.includes('invalid_grant') || error.message.includes('Token has been expired')) {

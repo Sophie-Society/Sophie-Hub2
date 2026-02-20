@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiError, apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('api:admin:partners:partner-type-reconciliation')
+
 import {
   listPartnerTypeReconciliation,
   runPartnerTypeReconciliation,
@@ -65,7 +68,7 @@ export async function GET(request: Request) {
       'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
     })
   } catch (error) {
-    console.error('Partner type reconciliation report failed:', error)
+    log.error('Partner type reconciliation report failed', error)
     return ApiErrors.database()
   }
 }
@@ -97,7 +100,7 @@ export async function POST(request: Request) {
 
     return apiSuccess(data)
   } catch (error) {
-    console.error('Partner type reconciliation failed:', error)
+    log.error('Partner type reconciliation failed', error)
     return ApiErrors.database()
   }
 }

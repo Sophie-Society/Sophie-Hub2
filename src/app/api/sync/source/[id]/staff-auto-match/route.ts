@@ -5,6 +5,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getSyncEngine } from '@/lib/sync'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:sync:staff-auto-match')
 
 const supabase = getAdminClient()
 
@@ -71,7 +74,7 @@ export async function POST(
       .eq('primary_entity', 'staff')
 
     if (tabsError) {
-      console.error('Failed to fetch staff tabs for auto-match:', tabsError)
+      logger.error('Failed to fetch staff tabs for auto-match', tabsError)
       return ApiErrors.database(tabsError.message)
     }
 
@@ -125,7 +128,7 @@ export async function POST(
       .eq('is_key', true)
 
     if (keyError) {
-      console.error('Failed to fetch key mappings for auto-match:', keyError)
+      logger.error('Failed to fetch key mappings for auto-match', keyError)
       return ApiErrors.database(keyError.message)
     }
 
@@ -195,6 +198,7 @@ export async function POST(
           error: result.stats.errors.find(e => e.severity === 'error')?.message || null,
         })
       } catch (error) {
+        logger.error(`Staff auto-match failed for tab ${tab.tab_name}`, error)
         tabResults.push({
           tab_mapping_id: tab.id,
           tab_name: tab.tab_name,
@@ -202,7 +206,7 @@ export async function POST(
           rows_processed: 0,
           rows_matched: 0,
           rows_skipped: 0,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Processing failed for this tab',
         })
       }
     }
@@ -226,7 +230,7 @@ export async function POST(
           contractorsCreated += result.stats.rowsCreated
           contractorRowsSkipped += result.stats.rowsSkipped
         } catch (error) {
-          console.error(`Contractor creation pass failed for tab ${tab.tab_name}:`, error)
+          logger.error(`Contractor creation pass failed for tab ${tab.tab_name}`, error)
         }
       }
     }
@@ -251,7 +255,7 @@ export async function POST(
       results: tabResults,
     })
   } catch (error) {
-    console.error('Error in POST /api/sync/source/[id]/staff-auto-match:', error)
+    logger.error('Error in POST /api/sync/source/[id]/staff-auto-match', error)
     return ApiErrors.internal()
   }
 }

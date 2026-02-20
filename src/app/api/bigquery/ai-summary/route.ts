@@ -21,6 +21,9 @@ import {
   normalizeMarketplaceCodes,
 } from '@/lib/amazon/marketplaces'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:bigquery:ai-summary')
 
 const supabase = getAdminClient()
 
@@ -328,7 +331,7 @@ Do not mention BigQuery or the data source. Speak as if this is the partner's Am
 
     return apiSuccess(responseData, 200, rateLimitHeaders(rateLimit))
   } catch (error) {
-    console.error('[ai-summary] Error:', error instanceof Error ? error.message : error)
+    log.error('[ai-summary] Error', error instanceof Error ? error.message : error)
     return ApiErrors.internal('Failed to generate AI summary')
   }
 }

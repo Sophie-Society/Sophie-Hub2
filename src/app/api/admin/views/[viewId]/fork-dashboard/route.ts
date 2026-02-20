@@ -19,6 +19,9 @@ import { requireTrueAdmin } from '@/lib/auth/api-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { logDashboardFork } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views:fork-dashboard')
 
 const ForkSchema = z.object({
   moduleAssignmentId: z.string().uuid(),
@@ -103,7 +106,7 @@ export async function POST(request: Request, context: RouteContext) {
         .limit(1)
 
       if (fallbackError) {
-        console.error('Failed to resolve fallback dashboard:', fallbackError)
+        log.error('Failed to resolve fallback dashboard', fallbackError)
         return ApiErrors.database()
       }
 
@@ -133,7 +136,7 @@ export async function POST(request: Request, context: RouteContext) {
         .single()
 
       if (seededTemplateError || !seededTemplate) {
-        console.error('Failed to auto-seed template dashboard:', seededTemplateError)
+        log.error('Failed to auto-seed template dashboard', seededTemplateError)
         return ApiErrors.database()
       }
 
@@ -148,7 +151,7 @@ export async function POST(request: Request, context: RouteContext) {
         })
 
       if (seedSectionError) {
-        console.error('Failed to seed template section:', seedSectionError)
+        log.error('Failed to seed template section', seedSectionError)
         return ApiErrors.database()
       }
 
@@ -184,47 +187,63 @@ export async function POST(request: Request, context: RouteContext) {
       return ApiErrors.database()
     }
 
-    // Clone sections and widgets
-    const sections = template.dashboard_sections || []
-    for (const section of sections) {
-      const { data: newSection, error: sectionError } = await supabase
-        .from('dashboard_sections')
-        .insert({
-          dashboard_id: forkedDashboard.id,
-          title: section.title,
-          icon_emoji: section.icon_emoji || null,
-          sort_order: section.sort_order,
-          collapsed: Boolean(section.collapsed),
-        })
-        .select()
-        .single()
+    // Clone sections in one batch, then clone all widgets in one batch
+    const sections = (template.dashboard_sections || []) as Array<{
+      title: string
+      icon_emoji: string | null
+      sort_order: number
+      collapsed: boolean | null
+      dashboard_widgets?: Record<string, unknown>[]
+    }>
 
-      if (sectionError || !newSection) {
-        console.error('Failed to clone section:', sectionError)
+    if (sections.length > 0) {
+      // Batch insert all sections — PostgreSQL RETURNING preserves insertion order
+      const { data: newSections, error: sectionError } = await supabase
+        .from('dashboard_sections')
+        .insert(
+          sections.map(section => ({
+            dashboard_id: forkedDashboard.id,
+            title: section.title,
+            icon_emoji: section.icon_emoji || null,
+            sort_order: section.sort_order,
+            collapsed: Boolean(section.collapsed),
+          }))
+        )
+        .select('id')
+
+      if (sectionError || !newSections || newSections.length !== sections.length) {
+        log.error('Failed to clone sections', sectionError)
         return ApiErrors.database()
       }
 
-      const widgets = section.dashboard_widgets || []
-      if (widgets.length > 0) {
+      // Collect all widgets across all sections using the new section IDs (insertion-order aligned)
+      const allWidgets: Record<string, unknown>[] = []
+      for (let i = 0; i < sections.length; i++) {
+        const newSectionId = newSections[i].id
+        const widgets = sections[i].dashboard_widgets || []
+        for (const w of widgets) {
+          allWidgets.push({
+            dashboard_id: forkedDashboard.id,
+            section_id: newSectionId,
+            widget_type: w.widget_type,
+            title: w.title,
+            grid_column: w.grid_column,
+            grid_row: w.grid_row,
+            col_span: w.col_span,
+            row_span: w.row_span,
+            sort_order: w.sort_order,
+            config: w.config || {},
+          })
+        }
+      }
+
+      if (allWidgets.length > 0) {
         const { error: widgetCloneError } = await supabase
           .from('dashboard_widgets')
-          .insert(
-            widgets.map((w: Record<string, unknown>) => ({
-              dashboard_id: forkedDashboard.id,
-              section_id: newSection.id,
-              widget_type: w.widget_type,
-              title: w.title,
-              grid_column: w.grid_column,
-              grid_row: w.grid_row,
-              col_span: w.col_span,
-              row_span: w.row_span,
-              sort_order: w.sort_order,
-              config: w.config || {},
-            }))
-          )
+          .insert(allWidgets)
 
         if (widgetCloneError) {
-          console.error('Failed to clone widgets:', widgetCloneError)
+          log.error('Failed to clone widgets', widgetCloneError)
           return ApiErrors.database()
         }
       }
@@ -237,7 +256,7 @@ export async function POST(request: Request, context: RouteContext) {
       .eq('id', assignment.id)
 
     if (assignmentUpdateError) {
-      console.error('Failed to update module assignment with forked dashboard:', assignmentUpdateError)
+      log.error('Failed to update module assignment with forked dashboard', assignmentUpdateError)
       return ApiErrors.database()
     }
 
@@ -251,7 +270,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     return apiSuccess({ dashboardId: forkedDashboard.id, forked: true }, 201)
   } catch (error) {
-    console.error('Fork dashboard error:', error)
+    log.error('Fork dashboard error', error)
     return ApiErrors.internal()
   }
 }

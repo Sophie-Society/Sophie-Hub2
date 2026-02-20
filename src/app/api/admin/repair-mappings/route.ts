@@ -6,6 +6,9 @@ import { getSheetRawRows } from '@/lib/google/sheets'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:repair-mappings')
 
 const supabase = getAdminClient()
 
@@ -78,7 +81,7 @@ export async function POST() {
       .or('source_column.is.null,source_column.eq.')
 
     if (fetchError) {
-      console.error('Error fetching broken mappings:', fetchError)
+      log.error('Error fetching broken mappings', fetchError)
       return ApiErrors.database(fetchError.message)
     }
 
@@ -95,7 +98,7 @@ export async function POST() {
       })
     }
 
-    console.log(`[repair-mappings] Found ${brokenMappings.length} mappings with empty source_column`)
+    log.info(`[repair-mappings] Found ${brokenMappings.length} mappings with empty source_column`)
 
     // Group by tab_mapping to minimize sheet fetches
     const byTabMapping = new Map<string, typeof brokenMappings>()
@@ -120,7 +123,7 @@ export async function POST() {
       } | null
 
       if (!tabMapping?.data_source?.spreadsheet_id) {
-        console.log(`[repair-mappings] Skipping tab ${tabMappingId} - no spreadsheet_id`)
+        log.info(`[repair-mappings] Skipping tab ${tabMappingId} - no spreadsheet_id`)
         results.push({
           tabMappingId,
           tabName: tabMapping?.tab_name || 'Unknown',
@@ -136,7 +139,7 @@ export async function POST() {
       const tabName = tabMapping.tab_name
       const headerRow = tabMapping.header_row ?? 0
 
-      console.log(`[repair-mappings] Fetching headers for ${sheetName} / ${tabName}`)
+      log.info(`[repair-mappings] Fetching headers for ${sheetName} / ${tabName}`)
 
       try {
         // Fetch raw rows from the sheet (need enough rows to get to header row)
@@ -196,7 +199,7 @@ export async function POST() {
           details,
         })
       } catch (sheetError) {
-        console.error(`[repair-mappings] Error fetching sheet ${tabName}:`, sheetError)
+        log.error(`[repair-mappings] Error fetching sheet ${tabName}`, sheetError)
         results.push({
           tabMappingId,
           tabName,
@@ -215,7 +218,7 @@ export async function POST() {
       results,
     })
   } catch (error) {
-    console.error('[repair-mappings] Error:', error)
+    log.error('[repair-mappings] Error', error)
     return ApiErrors.internal()
   }
 }
@@ -258,7 +261,7 @@ export async function GET() {
       .or('tab_name.is.null,tab_name.eq.')
 
     if (tabError) {
-      console.error('Error checking tab_mappings:', tabError)
+      log.error('Error checking tab_mappings', tabError)
     }
 
     // Get total counts for context
@@ -299,7 +302,7 @@ export async function GET() {
       brokenTabs: brokenTabs?.map(t => ({ id: t.id, tab_name: t.tab_name })) || [],
     })
   } catch (error) {
-    console.error('[repair-mappings] GET error:', error)
+    log.error('[repair-mappings] GET error', error)
     return ApiErrors.internal()
   }
 }

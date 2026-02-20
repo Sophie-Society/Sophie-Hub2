@@ -1,6 +1,9 @@
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:partners:field-lineage')
 
 const supabase = getAdminClient()
 
@@ -44,7 +47,7 @@ export async function GET() {
       .not('target_field', 'is', null)
 
     if (error) {
-      console.error('Error fetching field lineage:', error)
+      log.error('Error fetching field lineage', error)
       return ApiErrors.database()
     }
 
@@ -53,7 +56,7 @@ export async function GET() {
 
     // Debug: log first few raw rows to see data structure
     if (data && data.length > 0) {
-      console.log('[field-lineage] Sample raw row:', JSON.stringify(data[0], null, 2))
+      log.info('[field-lineage] Sample raw row', JSON.stringify(data[0], null, 2))
     }
 
     for (const row of data || []) {
@@ -82,7 +85,7 @@ export async function GET() {
           : 'Unknown'
 
       // Debug: log each processed entry
-      console.log(`[field-lineage] ${row.target_field}: source_column="${sourceColumn}", tab_name="${tabMappingRaw.tab_name}", sheet="${tabMappingRaw.data_source?.name}"`)
+      log.info(`[field-lineage] ${row.target_field}: source_column="${sourceColumn}", tab_name="${tabMappingRaw.tab_name}", sheet="${tabMappingRaw.data_source?.name}"`)
 
       lineage[row.target_field] = {
         targetField: row.target_field,
@@ -95,7 +98,7 @@ export async function GET() {
 
     return apiSuccess({ lineage })
   } catch (error) {
-    console.error('Error in GET /api/partners/field-lineage:', error)
+    log.error('Error in GET /api/partners/field-lineage', error)
     return ApiErrors.internal()
   }
 }

@@ -6,6 +6,9 @@ import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
 import { getSchemaDescription } from '@/lib/entity-fields'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:analyze-source')
 
 // =============================================================================
 // Validation Schema
@@ -195,7 +198,7 @@ Determine the primary entity type and provide a mapping strategy.`
 
     return apiSuccess({ analysis })
   } catch (error) {
-    console.error('AI analysis error:', error)
+    log.error('AI analysis error', error)
     if (error instanceof Error && error.message.includes('API key')) {
       return apiError('SERVICE_UNAVAILABLE', 'AI service authentication failed', 503)
     }

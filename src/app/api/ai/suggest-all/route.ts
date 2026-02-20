@@ -6,6 +6,9 @@ import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { hasSystemSetting } from '@/lib/settings'
 import { audit } from '@/lib/audit'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:suggest-all')
 
 // =============================================================================
 // Validation Schema
@@ -180,7 +183,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ suggestions, stats })
   } catch (error) {
-    console.error('AI bulk suggestion error:', error)
+    log.error('AI bulk suggestion error', error)
 
     if (error instanceof Error) {
       if (error.message.includes('API key')) {

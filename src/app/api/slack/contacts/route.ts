@@ -11,6 +11,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { classifySlackUser } from '@/lib/slack/types'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:contacts')
 
 export async function GET() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -117,7 +120,7 @@ export async function GET() {
       blocked_staff_mapped: contacts.filter(c => c.mapped_to_staff).length,
     })
   } catch (error) {
-    console.error('Failed to fetch Slack partner contacts:', error)
+    log.error('Failed to fetch Slack partner contacts', error)
     return ApiErrors.internal()
   }
 }

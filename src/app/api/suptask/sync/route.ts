@@ -5,6 +5,9 @@ import { getTicketRange } from '@/lib/suptask/client'
 import { sanitizeError } from '@/lib/suptask/client'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('suptask:sync')
 
 const supabase = getAdminClient()
 
@@ -73,13 +76,17 @@ export async function POST(request: NextRequest) {
     // Fetch tickets from SupTask API
     const { tickets, errors, abortReason } = await getTicketRange(start, end)
 
-    // Upsert tickets to database
+    // Batch upsert tickets in chunks of 50 (avoids N+1 per-ticket queries)
     let upsertedCount = 0
-    for (const ticket of tickets) {
-      const { error: upsertErr } = await supabase
+    const UPSERT_BATCH_SIZE = 50
+    const syncedAt = new Date().toISOString()
+
+    for (let i = 0; i < tickets.length; i += UPSERT_BATCH_SIZE) {
+      const batch = tickets.slice(i, i + UPSERT_BATCH_SIZE)
+      const { error: batchErr } = await supabase
         .from('suptask_tickets')
         .upsert(
-          {
+          batch.map(ticket => ({
             team_id: ticket.teamId,
             ticket_number: ticket.ticketNumber,
             status: ticket.status,
@@ -92,18 +99,20 @@ export async function POST(request: NextRequest) {
             raw_payload: ticket.raw,
             ticket_created_at: ticket.createdAt,
             ticket_updated_at: ticket.updatedAt,
-            last_synced_at: new Date().toISOString(),
-          },
+            last_synced_at: syncedAt,
+          })),
           { onConflict: 'team_id,ticket_number' }
         )
 
-      if (!upsertErr) {
-        upsertedCount++
+      if (batchErr) {
+        for (const ticket of batch) {
+          errors.push({
+            ticketNumber: ticket.ticketNumber,
+            error: `Batch upsert failed: ${batchErr.message}`,
+          })
+        }
       } else {
-        errors.push({
-          ticketNumber: ticket.ticketNumber,
-          error: `Upsert failed: ${upsertErr.message}`,
-        })
+        upsertedCount += batch.length
       }
     }
 
@@ -115,7 +124,8 @@ export async function POST(request: NextRequest) {
     const finalStatus = isFailed ? 'failed' : 'completed'
 
     const trimmedErrors = errors.slice(0, 50) // Cap stored errors
-    await supabase
+    // H-6: check error; H-7: chain .select() to return mutated row without second round-trip
+    const { error: updateRunError } = await supabase
       .from('suptask_sync_runs')
       .update({
         status: finalStatus,
@@ -126,6 +136,11 @@ export async function POST(request: NextRequest) {
         error_summary: trimmedErrors,
       })
       .eq('id', syncRunId)
+      .select('id')
+
+    if (updateRunError) {
+      log.error('Failed to update sync run status', { err: updateRunError, syncRunId, finalStatus })
+    }
 
     return apiSuccess({
       syncRunId,
@@ -140,7 +155,8 @@ export async function POST(request: NextRequest) {
     // Mark sync run as failed
     const rawMessage = err instanceof Error ? err.message : 'Unknown error'
     const safeMessage = sanitizeError(rawMessage)
-    await supabase
+    // H-6: check error; H-7: chain .select() to return mutated row without second round-trip
+    const { error: failRunError } = await supabase
       .from('suptask_sync_runs')
       .update({
         status: 'failed',
@@ -148,6 +164,11 @@ export async function POST(request: NextRequest) {
         error_summary: [{ ticketNumber: 0, error: safeMessage }],
       })
       .eq('id', syncRunId)
+      .select('id')
+
+    if (failRunError) {
+      log.error('Failed to mark sync run as failed', { err: failRunError, syncRunId })
+    }
 
     return apiError('SYNC_FAILED', safeMessage, 500)
   }

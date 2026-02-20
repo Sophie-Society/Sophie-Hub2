@@ -3,6 +3,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { DataSourceSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:data-sources:reorder')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -35,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess({ reordered: true })
   } catch (error) {
-    console.error('Error reordering sources:', error)
+    log.error('Error reordering sources', error)
     return ApiErrors.database('Failed to reorder sources')
   }
 }

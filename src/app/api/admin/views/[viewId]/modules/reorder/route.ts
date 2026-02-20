@@ -4,6 +4,9 @@ import { isTrueAdmin } from '@/lib/auth/admin-access'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { logModuleReorder } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views:modules:reorder')
 
 const ReorderSchema = z.object({
   order: z.array(
@@ -58,7 +61,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     })
 
     if (rpcError) {
-      console.error('Failed to reorder modules:', rpcError.message)
+      log.error('Failed to reorder modules', rpcError.message)
       return ApiErrors.database(rpcError.message)
     }
 
@@ -66,7 +69,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return apiSuccess({ reordered: order.length })
   } catch (error) {
-    console.error('Module reorder error:', error)
+    log.error('Module reorder error', error)
     return ApiErrors.internal()
   }
 }
