@@ -12,6 +12,9 @@ import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateUsersCache } from '@/lib/connectors/slack-cache'
 import { bulkReclassifyStaffMessages } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:staff:auto-match')
 
 export async function POST() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -39,7 +42,7 @@ export async function POST() {
       .not('email', 'is', null)
 
     if (staffError) {
-      console.error('Failed to fetch staff:', staffError)
+      log.error('Failed to fetch staff', staffError)
       return ApiErrors.database()
     }
 
@@ -103,7 +106,7 @@ export async function POST() {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`Batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`Batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
@@ -154,7 +157,7 @@ export async function POST() {
       unmatched_slack_users: unmatchedSlackUsers,
     })
   } catch (error) {
-    console.error('Staff auto-match error:', error)
+    log.error('Staff auto-match error', error)
     return ApiErrors.internal()
   }
 }

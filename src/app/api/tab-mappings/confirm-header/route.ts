@@ -2,6 +2,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:tab-mappings:confirm-header')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -63,13 +66,13 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating tab mapping:', error)
+      log.error('Error creating tab mapping', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ tabMapping, created: true }, 201)
   } catch (error) {
-    console.error('Error in POST /api/tab-mappings/confirm-header:', error)
+    log.error('Error in POST /api/tab-mappings/confirm-header', error)
     return ApiErrors.internal()
   }
 }

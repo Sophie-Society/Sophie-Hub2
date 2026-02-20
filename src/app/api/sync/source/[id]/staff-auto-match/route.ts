@@ -74,7 +74,7 @@ export async function POST(
       .eq('primary_entity', 'staff')
 
     if (tabsError) {
-      console.error('Failed to fetch staff tabs for auto-match:', tabsError)
+      logger.error('Failed to fetch staff tabs for auto-match', tabsError)
       return ApiErrors.database(tabsError.message)
     }
 
@@ -128,7 +128,7 @@ export async function POST(
       .eq('is_key', true)
 
     if (keyError) {
-      console.error('Failed to fetch key mappings for auto-match:', keyError)
+      logger.error('Failed to fetch key mappings for auto-match', keyError)
       return ApiErrors.database(keyError.message)
     }
 
@@ -230,7 +230,7 @@ export async function POST(
           contractorsCreated += result.stats.rowsCreated
           contractorRowsSkipped += result.stats.rowsSkipped
         } catch (error) {
-          console.error(`Contractor creation pass failed for tab ${tab.tab_name}:`, error)
+          logger.error(`Contractor creation pass failed for tab ${tab.tab_name}`, error)
         }
       }
     }
@@ -255,7 +255,7 @@ export async function POST(
       results: tabResults,
     })
   } catch (error) {
-    console.error('Error in POST /api/sync/source/[id]/staff-auto-match:', error)
+    logger.error('Error in POST /api/sync/source/[id]/staff-auto-match', error)
     return ApiErrors.internal()
   }
 }

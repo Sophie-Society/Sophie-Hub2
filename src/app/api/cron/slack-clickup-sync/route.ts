@@ -12,11 +12,14 @@
 import { NextRequest } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response'
 import { runSlackClickUpDailySync } from '@/lib/automation/slack-clickup-sync'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:cron:slack-clickup-sync')
 
 export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
-    console.error('Slack ClickUp sync cron: CRON_SECRET is not configured')
+    log.error('Slack ClickUp sync cron: CRON_SECRET is not configured')
     return apiError('INTERNAL_ERROR', 'Cron secret is not configured', 500)
   }
 
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
       duration_ms: Date.now() - start,
     })
   } catch (error) {
-    console.error('Slack ClickUp sync cron failed:', error)
+    log.error('Slack ClickUp sync cron failed', error)
     return apiError('INTERNAL_ERROR', 'Slack ClickUp sync failed', 500)
   }
 }

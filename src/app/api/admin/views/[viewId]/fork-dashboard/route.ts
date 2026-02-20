@@ -19,6 +19,9 @@ import { requireTrueAdmin } from '@/lib/auth/api-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { logDashboardFork } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views:fork-dashboard')
 
 const ForkSchema = z.object({
   moduleAssignmentId: z.string().uuid(),
@@ -103,7 +106,7 @@ export async function POST(request: Request, context: RouteContext) {
         .limit(1)
 
       if (fallbackError) {
-        console.error('Failed to resolve fallback dashboard:', fallbackError)
+        log.error('Failed to resolve fallback dashboard', fallbackError)
         return ApiErrors.database()
       }
 
@@ -133,7 +136,7 @@ export async function POST(request: Request, context: RouteContext) {
         .single()
 
       if (seededTemplateError || !seededTemplate) {
-        console.error('Failed to auto-seed template dashboard:', seededTemplateError)
+        log.error('Failed to auto-seed template dashboard', seededTemplateError)
         return ApiErrors.database()
       }
 
@@ -148,7 +151,7 @@ export async function POST(request: Request, context: RouteContext) {
         })
 
       if (seedSectionError) {
-        console.error('Failed to seed template section:', seedSectionError)
+        log.error('Failed to seed template section', seedSectionError)
         return ApiErrors.database()
       }
 
@@ -209,7 +212,7 @@ export async function POST(request: Request, context: RouteContext) {
         .select('id')
 
       if (sectionError || !newSections || newSections.length !== sections.length) {
-        console.error('Failed to clone sections:', sectionError)
+        log.error('Failed to clone sections', sectionError)
         return ApiErrors.database()
       }
 
@@ -240,7 +243,7 @@ export async function POST(request: Request, context: RouteContext) {
           .insert(allWidgets)
 
         if (widgetCloneError) {
-          console.error('Failed to clone widgets:', widgetCloneError)
+          log.error('Failed to clone widgets', widgetCloneError)
           return ApiErrors.database()
         }
       }
@@ -253,7 +256,7 @@ export async function POST(request: Request, context: RouteContext) {
       .eq('id', assignment.id)
 
     if (assignmentUpdateError) {
-      console.error('Failed to update module assignment with forked dashboard:', assignmentUpdateError)
+      log.error('Failed to update module assignment with forked dashboard', assignmentUpdateError)
       return ApiErrors.database()
     }
 
@@ -267,7 +270,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     return apiSuccess({ dashboardId: forkedDashboard.id, forked: true }, 201)
   } catch (error) {
-    console.error('Fork dashboard error:', error)
+    log.error('Fork dashboard error', error)
     return ApiErrors.internal()
   }
 }

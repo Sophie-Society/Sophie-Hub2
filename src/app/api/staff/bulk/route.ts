@@ -3,6 +3,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors, apiError, ErrorCodes } from '@/lib/api/response'
 import { logStaffBulkUpdate } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:staff:bulk')
 
 const supabase = getAdminClient()
 
@@ -124,7 +127,7 @@ export async function PATCH(request: Request) {
       .in('id', staff_ids)
 
     if (existingError) {
-      console.error('Error loading staff for bulk update:', existingError)
+      log.error('Error loading staff for bulk update', existingError)
       return ApiErrors.database(existingError.message)
     }
 
@@ -167,7 +170,7 @@ export async function PATCH(request: Request) {
     const updateResults = await Promise.all(updatePromises)
     const firstError = updateResults.find((result) => result.error)?.error
     if (firstError) {
-      console.error('Error bulk updating staff:', firstError)
+      log.error('Error bulk updating staff', firstError)
       return ApiErrors.database(firstError.message)
     }
 
@@ -188,7 +191,7 @@ export async function PATCH(request: Request) {
       updated_count: updatedCount,
     })
   } catch (error) {
-    console.error('Error in PATCH /api/staff/bulk:', error)
+    log.error('Error in PATCH /api/staff/bulk', error)
     return ApiErrors.internal()
   }
 }

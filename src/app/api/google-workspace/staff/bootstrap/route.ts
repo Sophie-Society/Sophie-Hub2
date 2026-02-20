@@ -18,6 +18,9 @@ import {
   resolveGoogleWorkspaceApprovalByUserId,
 } from '@/lib/google-workspace/staff-approval-queue'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:staff:bootstrap')
 
 type SnapshotRow = {
   google_user_id: string
@@ -72,7 +75,7 @@ export async function POST() {
       .order('primary_email', { ascending: true })
 
     if (snapshotError) {
-      console.error('Failed to load directory snapshot for bootstrap:', snapshotError)
+      log.error('Failed to load directory snapshot for bootstrap', snapshotError)
       return ApiErrors.database()
     }
 
@@ -196,7 +199,7 @@ export async function POST() {
               .single()
             staffId = existingByEmail?.id || null
           } else {
-            console.error(`Failed to insert staff for ${user.primary_email}:`, insertError)
+            log.error(`Failed to insert staff for ${user.primary_email}`, insertError)
             continue
           }
         } else {
@@ -233,7 +236,7 @@ export async function POST() {
         )
 
       if (mapError) {
-        console.error(`Failed to map ${user.primary_email} -> staff ${staffId}:`, mapError)
+        log.error(`Failed to map ${user.primary_email} -> staff ${staffId}`, mapError)
         continue
       }
 
@@ -241,7 +244,7 @@ export async function POST() {
       try {
         await resolveGoogleWorkspaceApprovalByUserId(user.google_user_id)
       } catch (queueError) {
-        console.error('Failed to resolve queue item during bootstrap:', queueError)
+        log.error('Failed to resolve queue item during bootstrap', queueError)
       }
     }
 
@@ -259,7 +262,7 @@ export async function POST() {
       staff_approvals_queue: queueSync,
     })
   } catch (error) {
-    console.error('Google Workspace staff bootstrap error:', error)
+    log.error('Google Workspace staff bootstrap error', error)
     return ApiErrors.internal()
   }
 }

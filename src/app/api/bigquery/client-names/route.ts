@@ -16,6 +16,9 @@ import {
   setCachedClientNames,
 } from '@/lib/connectors/bigquery-cache'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:bigquery:client-names')
 
 const supabase = getAdminClient()
 
@@ -30,7 +33,7 @@ export async function GET() {
     // Check shared server-side cache first
     const cached = getCachedClientNames()
     if (cached) {
-      console.log('[BigQuery client-names] Serving from cache')
+      log.info('[BigQuery client-names] Serving from cache')
       const response = apiSuccess({
         clientNames: cached,
         count: cached.length,
@@ -40,7 +43,7 @@ export async function GET() {
       return response
     }
 
-    console.log('[BigQuery client-names] Fetching from BigQuery...')
+    log.info('[BigQuery client-names] Fetching from BigQuery...')
     const config = {
       type: 'bigquery' as const,
       project_id: 'sophie-society-reporting',
@@ -57,7 +60,7 @@ export async function GET() {
     ])
 
     if (existingMappingsResult.error) {
-      console.error('BigQuery client-names mapping fetch error:', existingMappingsResult.error)
+      log.error('BigQuery client-names mapping fetch error', existingMappingsResult.error)
       return ApiErrors.database()
     }
 
@@ -71,7 +74,7 @@ export async function GET() {
 
     // Update shared cache
     setCachedClientNames(mergedIdentifiers)
-    console.log(`[BigQuery client-names] Cached ${mergedIdentifiers.length} identifiers`)
+    log.info(`[BigQuery client-names] Cached ${mergedIdentifiers.length} identifiers`)
 
     // Add Cache-Control header for browser caching too
     const response = apiSuccess({
@@ -82,7 +85,7 @@ export async function GET() {
     response.headers.set('Cache-Control', 'private, max-age=300') // 5 min browser cache
     return response
   } catch (error) {
-    console.error('BigQuery client-names error:', error)
+    log.error('BigQuery client-names error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to fetch client names'
     )

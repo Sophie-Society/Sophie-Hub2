@@ -7,6 +7,9 @@ import { getAnthropicApiKey } from '@/lib/settings'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { getCodebaseContextForFeature, formatContextForPrompt } from '@/lib/ai/codebase-context'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:suggest-implementation')
 
 const RequestSchema = z.object({
   feedbackId: z.string().uuid('Invalid feedback ID'),
@@ -206,7 +209,7 @@ Respond with a JSON object matching this structure:
       suggestion,
     })
   } catch (error) {
-    console.error('Claude API error:', error)
+    log.error('Claude API error', error)
     return apiError('AI_ERROR', 'Failed to generate implementation suggestion. Please try again.', 500)
   }
 }

@@ -4,6 +4,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { z } from 'zod'
 import { logRuleChange } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views:rules')
 
 const supabase = getAdminClient()
 
@@ -59,13 +62,13 @@ export async function GET(_request: Request, context: RouteContext) {
       .order('priority', { ascending: true })
 
     if (error) {
-      console.error('Failed to fetch audience rules:', error)
+      log.error('Failed to fetch audience rules', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ rules: rules || [] })
   } catch (error) {
-    console.error('Audience rules fetch error:', error)
+    log.error('Audience rules fetch error', error)
     return ApiErrors.internal()
   }
 }
@@ -128,7 +131,7 @@ export async function POST(request: Request, context: RouteContext) {
       if (error.code === '23505') {
         return ApiErrors.conflict(`A rule for this target already exists on this view`)
       }
-      console.error('Failed to create audience rule:', error)
+      log.error('Failed to create audience rule', error)
       return ApiErrors.database(error.message)
     }
 
@@ -141,7 +144,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     return apiSuccess({ rule }, 201)
   } catch (error) {
-    console.error('Audience rule creation error:', error)
+    log.error('Audience rule creation error', error)
     return ApiErrors.internal()
   }
 }

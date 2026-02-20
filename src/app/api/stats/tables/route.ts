@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { STATUS_BUCKETS } from '@/lib/status-colors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:stats:tables')
 
 const supabase = getAdminClient()
 const PARTNER_PAGE_SIZE = 1000
@@ -145,7 +148,7 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error('Error fetching table stats:', error)
+    log.error('Error fetching table stats', error)
     return NextResponse.json(
       { error: 'Failed to fetch stats' },
       { status: 500 }

@@ -10,6 +10,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { invalidateClientNamesCache } from '@/lib/connectors/bigquery-cache'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('api:bigquery:partner-mappings')
+
 import {
   inferMarketplaceCodeFromText,
   normalizeMarketplaceCode,
@@ -52,7 +55,7 @@ export async function GET() {
       .order('external_id')
 
     if (error) {
-      console.error('Error fetching mappings:', error)
+      log.error('Error fetching mappings', error)
       return ApiErrors.database()
     }
 
@@ -92,7 +95,7 @@ export async function GET() {
     response.headers.set('Cache-Control', 'private, max-age=60') // 1 min cache
     return response
   } catch (error) {
-    console.error('GET partner-mappings error:', error)
+    log.error('GET partner-mappings error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to fetch mappings'
     )
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (existingError) {
-      console.error('Error fetching existing BigQuery mapping:', existingError)
+      log.error('Error fetching existing BigQuery mapping', existingError)
       return ApiErrors.database()
     }
 
@@ -200,7 +203,7 @@ export async function POST(request: NextRequest) {
           409
         )
       }
-      console.error('Error saving mapping:', error)
+      log.error('Error saving mapping', error)
       return ApiErrors.database()
     }
 
@@ -214,7 +217,7 @@ export async function POST(request: NextRequest) {
       }
     }, 201)
   } catch (error) {
-    console.error('POST partner-mappings error:', error)
+    log.error('POST partner-mappings error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to save mapping'
     )
@@ -246,7 +249,7 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'bigquery') // Safety: only delete BigQuery mappings
 
     if (error) {
-      console.error('Error deleting mapping:', error)
+      log.error('Error deleting mapping', error)
       return ApiErrors.database()
     }
 
@@ -255,7 +258,7 @@ export async function DELETE(request: NextRequest) {
 
     return apiSuccess({ deleted: true })
   } catch (error) {
-    console.error('DELETE partner-mappings error:', error)
+    log.error('DELETE partner-mappings error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to delete mapping'
     )

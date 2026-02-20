@@ -4,6 +4,9 @@ import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { logModuleAssign, logModuleRemove, logViewChange } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views:modules')
 
 const CreateAssignmentSchema = z.object({
   module_id: z.string().uuid(),
@@ -66,7 +69,7 @@ export async function GET(_request: Request, context: RouteContext) {
       .order('sort_order', { ascending: true })
 
     if (error) {
-      console.error('Failed to fetch view modules:', error)
+      log.error('Failed to fetch view modules', error)
       return ApiErrors.database(error.message)
     }
 
@@ -88,7 +91,7 @@ export async function GET(_request: Request, context: RouteContext) {
         .in('id', moduleIds)
 
       if (modulesError) {
-        console.error('Failed to fetch module metadata:', modulesError)
+        log.error('Failed to fetch module metadata', modulesError)
       } else {
         modulesById = new Map((modules || []).map((module) => [module.id, module]))
       }
@@ -101,7 +104,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return apiSuccess({ assignments: normalizedAssignments })
   } catch (error) {
-    console.error('View modules fetch error:', error)
+    log.error('View modules fetch error', error)
     return ApiErrors.internal()
   }
 }
@@ -174,7 +177,7 @@ export async function POST(request: Request, context: RouteContext) {
       if (error.code === '23505') {
         return ApiErrors.conflict('This module is already assigned to the view')
       }
-      console.error('Failed to assign module to view:', error)
+      log.error('Failed to assign module to view', error)
       return ApiErrors.database(error.message)
     }
 
@@ -182,7 +185,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     return apiSuccess({ assignment }, 201)
   } catch (error) {
-    console.error('View module assignment error:', error)
+    log.error('View module assignment error', error)
     return ApiErrors.internal()
   }
 }
@@ -221,7 +224,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       .maybeSingle()
 
     if (existingError) {
-      console.error('Failed checking module assignment:', existingError)
+      log.error('Failed checking module assignment', existingError)
       return ApiErrors.database(existingError.message)
     }
 
@@ -236,7 +239,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       .eq('module_id', module_id)
 
     if (error) {
-      console.error('Failed to delete module assignment:', error)
+      log.error('Failed to delete module assignment', error)
       return ApiErrors.database(error.message)
     }
 
@@ -244,7 +247,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     return new Response(null, { status: 204 })
   } catch (error) {
-    console.error('View module removal error:', error)
+    log.error('View module removal error', error)
     return ApiErrors.internal()
   }
 }
@@ -320,7 +323,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return apiSuccess({ assignment: updated })
   } catch (error) {
-    console.error('View module layout update error:', error)
+    log.error('View module layout update error', error)
     return ApiErrors.internal()
   }
 }

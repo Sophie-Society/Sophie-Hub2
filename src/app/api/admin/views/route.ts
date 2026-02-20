@@ -4,6 +4,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { z } from 'zod'
 import { logViewChange } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views')
 
 const supabase = getAdminClient()
 
@@ -40,7 +43,7 @@ export async function GET(request: Request) {
     const { data: views, error } = await query
 
     if (error) {
-      console.error('Failed to fetch view profiles:', error)
+      log.error('Failed to fetch view profiles', error)
       return ApiErrors.database(error.message)
     }
 
@@ -53,7 +56,7 @@ export async function GET(request: Request) {
 
     return apiSuccess({ views: result })
   } catch (error) {
-    console.error('View profiles fetch error:', error)
+    log.error('View profiles fetch error', error)
     return ApiErrors.internal()
   }
 }
@@ -92,7 +95,7 @@ export async function POST(request: Request) {
       if (error.code === '23505') {
         return ApiErrors.conflict(`View with slug "${slug}" already exists`)
       }
-      console.error('Failed to create view profile:', error)
+      log.error('Failed to create view profile', error)
       return ApiErrors.database(error.message)
     }
 
@@ -100,7 +103,7 @@ export async function POST(request: Request) {
 
     return apiSuccess({ view }, 201)
   } catch (error) {
-    console.error('View profile creation error:', error)
+    log.error('View profile creation error', error)
     return ApiErrors.internal()
   }
 }

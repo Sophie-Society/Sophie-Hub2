@@ -92,7 +92,7 @@ export async function POST() {
           tombstoned: 0,
         })
       }
-      console.error('Directory sync: failed to read existing snapshot:', existingSnapshotError)
+      logger.error('Directory sync: failed to read existing snapshot', existingSnapshotError)
       return ApiErrors.database()
     }
 
@@ -193,7 +193,7 @@ export async function POST() {
             tombstoned: 0,
           })
         }
-        console.error(`Batch upsert failed (offset ${i}):`, error)
+        logger.error(`Batch upsert failed (offset ${i})`, error)
       } else {
         upserted += batch.length
       }
@@ -242,7 +242,7 @@ export async function POST() {
       completed_at: now,
     })
   } catch (error) {
-    console.error('Directory sync error:', error)
+    logger.error('Directory sync error', error)
     return ApiErrors.internal()
   }
 }

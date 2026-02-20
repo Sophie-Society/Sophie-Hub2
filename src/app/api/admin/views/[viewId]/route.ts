@@ -4,6 +4,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { z } from 'zod'
 import { logViewChange } from '@/lib/audit/admin-audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:views')
 
 const supabase = getAdminClient()
 
@@ -45,7 +48,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return apiSuccess({ view })
   } catch (error) {
-    console.error('View profile fetch error:', error)
+    log.error('View profile fetch error', error)
     return ApiErrors.internal()
   }
 }
@@ -79,7 +82,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     if (error) {
       if (error.code === 'PGRST116') return ApiErrors.notFound('View profile')
-      console.error('Failed to update view profile:', error)
+      log.error('Failed to update view profile', error)
       return ApiErrors.database(error.message)
     }
 
@@ -87,7 +90,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return apiSuccess({ view })
   } catch (error) {
-    console.error('View profile update error:', error)
+    log.error('View profile update error', error)
     return ApiErrors.internal()
   }
 }
@@ -120,7 +123,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
       .eq('id', viewId)
 
     if (error) {
-      console.error('Failed to delete view profile:', error)
+      log.error('Failed to delete view profile', error)
       return ApiErrors.database(error.message)
     }
 
@@ -128,7 +131,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
     return new Response(null, { status: 204 })
   } catch (error) {
-    console.error('View profile deletion error:', error)
+    log.error('View profile deletion error', error)
     return ApiErrors.internal()
   }
 }

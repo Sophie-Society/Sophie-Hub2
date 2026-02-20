@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:help')
 
 const supabase = getAdminClient()
 
@@ -33,7 +36,7 @@ export async function GET(
         // No rows returned
         return ApiErrors.notFound('Help document')
       }
-      console.error('Error fetching help doc:', error)
+      log.error('Error fetching help doc', error)
       return ApiErrors.database(error.message)
     }
 
@@ -53,7 +56,7 @@ export async function GET(
       }
     })
   } catch (error) {
-    console.error('Error in GET /api/help/[docId]:', error)
+    log.error('Error in GET /api/help/[docId]', error)
     return ApiErrors.internal()
   }
 }

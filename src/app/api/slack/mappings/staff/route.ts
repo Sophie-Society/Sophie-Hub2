@@ -13,6 +13,9 @@ import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/r
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateUsersCache } from '@/lib/connectors/slack-cache'
 import { reclassifyStaffMessages, unclassifyStaffMessages } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:staff')
 
 const CreateMappingSchema = z.object({
   staff_id: z.string().uuid('staff_id must be a valid UUID'),
@@ -40,7 +43,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching staff-slack mappings:', error)
+      log.error('Error fetching staff-slack mappings', error)
       return ApiErrors.database()
     }
 
@@ -69,7 +72,7 @@ export async function GET() {
 
     return apiSuccess({ mappings: enriched, count: enriched.length })
   } catch (error) {
-    console.error('GET staff-slack mappings error:', error)
+    log.error('GET staff-slack mappings error', error)
     return ApiErrors.internal()
   }
 }
@@ -116,7 +119,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
 
     if (existingError) {
-      console.error('Error fetching existing staff-slack mapping:', existingError)
+      log.error('Error fetching existing staff-slack mapping', existingError)
       return ApiErrors.database()
     }
 
@@ -155,7 +158,7 @@ export async function POST(request: NextRequest) {
       if (error.code === '23505') {
         return apiError('CONFLICT', 'This Slack user is already mapped to another staff member', 409)
       }
-      console.error('Error saving staff-slack mapping:', error)
+      log.error('Error saving staff-slack mapping', error)
       return ApiErrors.database()
     }
 
@@ -190,7 +193,7 @@ export async function POST(request: NextRequest) {
       messages_unclassified_old: messagesUnclassifiedOld,
     }, 201)
   } catch (error) {
-    console.error('POST staff-slack mapping error:', error)
+    log.error('POST staff-slack mapping error', error)
     return ApiErrors.internal()
   }
 }
@@ -229,7 +232,7 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'slack_user')
 
     if (error) {
-      console.error('Error deleting staff-slack mapping:', error)
+      log.error('Error deleting staff-slack mapping', error)
       return ApiErrors.database()
     }
 
@@ -251,7 +254,7 @@ export async function DELETE(request: NextRequest) {
 
     return apiSuccess({ deleted: true, messages_unclassified: messagesUnclassified })
   } catch (error) {
-    console.error('DELETE staff-slack mapping error:', error)
+    log.error('DELETE staff-slack mapping error', error)
     return ApiErrors.internal()
   }
 }

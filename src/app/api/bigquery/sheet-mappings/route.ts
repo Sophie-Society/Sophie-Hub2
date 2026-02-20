@@ -12,6 +12,9 @@ import { authOptions } from '@/lib/auth/config'
 import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('api:bigquery:sheet-mappings')
+
 import {
   applyBigQueryReferenceSheetMappings,
   buildBigQueryReferenceSheetPreview,
@@ -50,7 +53,7 @@ export async function GET() {
       'Cache-Control': 'no-store',
     })
   } catch (error) {
-    console.error('BigQuery reference sheet GET error:', error)
+    log.error('BigQuery reference sheet GET error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to read reference sheet'
     )
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
       'Cache-Control': 'no-store',
     })
   } catch (error) {
-    console.error('BigQuery reference sheet POST error:', error)
+    log.error('BigQuery reference sheet POST error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to sync reference sheet mappings'
     )

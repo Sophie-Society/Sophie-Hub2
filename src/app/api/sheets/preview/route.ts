@@ -4,6 +4,9 @@ import { authOptions } from '@/lib/auth/config'
 import { getSheetPreview } from '@/lib/google/sheets'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sheets:preview')
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('Error getting sheet preview:', error)
+    log.error('Error getting sheet preview', error)
     return NextResponse.json(
       { error: 'Failed to get sheet preview' },
       { status: 500 }

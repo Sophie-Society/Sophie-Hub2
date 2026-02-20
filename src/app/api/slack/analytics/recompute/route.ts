@@ -12,6 +12,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { computeAllChannels } from '@/lib/slack/analytics'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:analytics:recompute')
 
 const BodySchema = z.object({
   channel_id: z.string().optional(),
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     const { channel_id, date_from, date_to } = validation.data
 
-    console.log(
+    log.info(
       `Analytics recompute triggered by ${auth.user.email}: ` +
       `${date_from} to ${date_to}${channel_id ? ` (channel: ${channel_id})` : ' (all channels)'}`
     )
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
       channel_id: channel_id || null,
     })
   } catch (error) {
-    console.error('POST analytics/recompute error:', error)
+    log.error('POST analytics/recompute error', error)
     return ApiErrors.internal()
   }
 }

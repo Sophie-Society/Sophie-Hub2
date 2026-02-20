@@ -25,6 +25,9 @@ import {
   normalizeMarketplaceCodes,
 } from '@/lib/amazon/marketplaces'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:bigquery:query')
 
 const supabase = getAdminClient()
 
@@ -418,10 +421,10 @@ export async function POST(request: NextRequest) {
         })
       ).then((result) => {
         if (result && typeof result === 'object' && 'error' in result && result.error) {
-          console.error('[bq-usage-log] Insert failed:', result.error)
+          log.error('[bq-usage-log] Insert failed', result.error)
         }
       }).catch((err) => {
-        console.error('[bq-usage-log] Unexpected error:', err)
+        log.error('[bq-usage-log] Unexpected error', err)
       })
     }).catch(() => {})
 
@@ -507,7 +510,7 @@ export async function POST(request: NextRequest) {
     return apiSuccess(responseData, 200, rateLimitHeaders(rateLimit))
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
-    console.error('[bigquery-query] Error:', detail)
+    log.error('[bigquery-query] Error', detail)
 
     if (process.env.NODE_ENV !== 'production') {
       return apiError('INTERNAL_ERROR', `BigQuery query failed: ${detail}`, 500)

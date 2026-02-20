@@ -3,6 +3,9 @@ import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:tab-mappings')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -82,13 +85,13 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating tab mapping:', error)
+      log.error('Error creating tab mapping', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ tabMapping }, 201)
   } catch (error) {
-    console.error('Error in POST /api/tab-mappings:', error)
+    log.error('Error in POST /api/tab-mappings', error)
     return ApiErrors.internal()
   }
 }
@@ -130,7 +133,7 @@ export async function PATCH(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error updating tab mapping:', error)
+      log.error('Error updating tab mapping', error)
       return ApiErrors.database(error.message)
     }
 
@@ -140,7 +143,7 @@ export async function PATCH(request: Request) {
 
     return apiSuccess({ tabMapping: data })
   } catch (error) {
-    console.error('Error in PATCH /api/tab-mappings:', error)
+    log.error('Error in PATCH /api/tab-mappings', error)
     return ApiErrors.internal()
   }
 }

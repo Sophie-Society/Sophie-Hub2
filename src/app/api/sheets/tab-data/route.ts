@@ -5,6 +5,9 @@ import { authOptions } from '@/lib/auth/config'
 import { getSheetData } from '@/lib/google/sheets'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sheets:tab-data')
 
 const TabDataQuerySchema = z.object({
   id: z.string().min(1, 'Spreadsheet ID is required'),
@@ -61,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error getting tab data:', error)
+    log.error('Error getting tab data', error)
     return NextResponse.json(
       { error: 'Failed to get tab data' },
       { status: 500 }

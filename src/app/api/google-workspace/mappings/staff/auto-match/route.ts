@@ -18,6 +18,9 @@ import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
 import { isStaffEligibleForAutoMapping } from '@/lib/staff/lifecycle'
 import { refreshGoogleWorkspaceStaffApprovalQueue } from '@/lib/google-workspace/staff-approval-queue'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:mappings:staff:auto-match')
 
 export async function POST() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -34,7 +37,7 @@ export async function POST() {
       .select('google_user_id, primary_email, full_name, org_unit_path, title, account_type_override, aliases, is_deleted, is_suspended, is_admin')
 
     if (dirError) {
-      console.error('Failed to fetch directory snapshot:', dirError)
+      log.error('Failed to fetch directory snapshot', dirError)
       return ApiErrors.database()
     }
 
@@ -67,7 +70,7 @@ export async function POST() {
       .not('email', 'is', null)
 
     if (staffError) {
-      console.error('Failed to fetch staff:', staffError)
+      log.error('Failed to fetch staff', staffError)
       return ApiErrors.database()
     }
 
@@ -230,7 +233,7 @@ export async function POST() {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`GWS auto-match batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`GWS auto-match batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
@@ -293,7 +296,7 @@ export async function POST() {
       staff_approvals_queue: approvalQueueSync,
     })
   } catch (error) {
-    console.error('GWS staff auto-match error:', error)
+    log.error('GWS staff auto-match error', error)
     return ApiErrors.internal()
   }
 }

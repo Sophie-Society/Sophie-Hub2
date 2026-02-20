@@ -7,6 +7,9 @@ import { checkSyncRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { maybeSyncBigQueryMappingsFromReferenceSheetOnTabSync } from '@/lib/bigquery/reference-sheet-mappings'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sync:tab')
 
 // Validation schema for sync options
 const SyncOptionsSchema = z.object({
@@ -121,7 +124,7 @@ export async function POST(
           dryRun: false,
         })
       } catch (sheetSyncError) {
-        console.error('Reference sheet BigQuery mapping sync failed:', sheetSyncError)
+        log.error('Reference sheet BigQuery mapping sync failed', sheetSyncError)
       }
     }
 
@@ -141,7 +144,7 @@ export async function POST(
       duration_ms: result.durationMs,
     })
   } catch (error) {
-    console.error('Error in POST /api/sync/tab/[id]:', error)
+    log.error('Error in POST /api/sync/tab/[id]', error)
 
     if (error instanceof Error) {
       // Return more specific error messages

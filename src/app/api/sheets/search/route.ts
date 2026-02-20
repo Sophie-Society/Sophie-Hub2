@@ -4,6 +4,9 @@ import { authOptions } from '@/lib/auth/config'
 import { searchSheets } from '@/lib/google/sheets'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sheets:search')
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ sheets })
   } catch (error) {
-    console.error('Error searching sheets:', error)
+    log.error('Error searching sheets', error)
     return NextResponse.json(
       { error: 'Failed to search sheets' },
       { status: 500 }

@@ -19,6 +19,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { UNIFIED_VIEWS } from '@/lib/connectors/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { BIGQUERY } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('api:bigquery:partner-data')
+
 import {
   inferMarketplaceCodeFromText,
   normalizeMarketplaceCode,
@@ -101,7 +104,7 @@ export async function GET(
       .order('updated_at', { ascending: false })
 
     if (mappingError) {
-      console.error('Error looking up BigQuery mapping:', mappingError)
+      log.error('Error looking up BigQuery mapping', mappingError)
       return ApiErrors.database()
     }
 
@@ -208,7 +211,7 @@ export async function GET(
       rows: normalizedRows,
     })
   } catch (error) {
-    console.error('BigQuery partner-data error:', error)
+    log.error('BigQuery partner-data error', error)
     return ApiErrors.internal(
       error instanceof Error ? error.message : 'Failed to fetch partner data'
     )

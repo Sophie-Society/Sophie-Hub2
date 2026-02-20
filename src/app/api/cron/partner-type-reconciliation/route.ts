@@ -11,11 +11,14 @@
 import { NextRequest } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response'
 import { runPartnerTypeReconciliation } from '@/lib/partners/partner-type-reconciliation'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:cron:partner-type-reconciliation')
 
 export async function POST(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
-    console.error('Partner type reconciliation cron: CRON_SECRET is not configured')
+    log.error('Partner type reconciliation cron: CRON_SECRET is not configured')
     return apiError('INTERNAL_ERROR', 'Cron secret is not configured', 500)
   }
 
@@ -27,7 +30,7 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    console.log('Partner type reconciliation cron: starting')
+    log.info('Partner type reconciliation cron: starting')
 
     const result = await runPartnerTypeReconciliation({
       dryRun: false,
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest) {
     })
 
     const durationMs = Date.now() - startTime
-    console.log(
+    log.info(
       `Partner type reconciliation cron: completed in ${durationMs}ms — ` +
       `${result.updated} updated, ${result.failed} failed`
     )
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     const durationMs = Date.now() - startTime
-    console.error(`Partner type reconciliation cron: failed after ${durationMs}ms:`, error)
+    log.error(`Partner type reconciliation cron: failed after ${durationMs}ms`, error)
 
     return apiError('INTERNAL_ERROR', 'Partner type reconciliation cron failed', 500)
   }

@@ -5,6 +5,9 @@ import { authOptions } from '@/lib/auth/config'
 import { getSheetRawRows, detectHeaderRow } from '@/lib/google/sheets'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sheets:raw-rows')
 
 const RawRowsQuerySchema = z.object({
   id: z.string().min(1, 'Spreadsheet ID is required'),
@@ -129,7 +132,7 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' },
     })
   } catch (error) {
-    console.error('Error getting raw rows:', error)
+    log.error('Error getting raw rows', error)
     const mappedError = getGoogleApiErrorResponse(error)
     return NextResponse.json(
       { error: mappedError.message },

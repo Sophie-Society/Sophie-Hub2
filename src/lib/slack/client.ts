@@ -1,3 +1,5 @@
+import { createLogger } from '@/lib/logger'
+const log = createLogger('lib:slack:client')
 /**
  * Slack API Client
  *
@@ -95,7 +97,7 @@ async function fetchWithRetry(
       const backoffMs = retryAfter && !isNaN(retryAfter)
         ? retryAfter * 1000
         : MIN_DELAY_MS * Math.pow(2, attempt + 1) // exponential backoff
-      console.warn(`Slack 429: retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
+      log.warn(`Slack 429: retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
       await new Promise(resolve => setTimeout(resolve, backoffMs))
       continue
     }

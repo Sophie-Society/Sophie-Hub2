@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:field-tags')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -17,7 +20,7 @@ export async function GET() {
       .order('name')
 
     if (error) {
-      console.error('Error fetching field tags:', error)
+      log.error('Error fetching field tags', error)
       return NextResponse.json({ error: 'Failed to fetch tags' }, { status: 500 })
     }
 
@@ -25,7 +28,7 @@ export async function GET() {
       headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=600' },
     })
   } catch (error) {
-    console.error('Error in field-tags GET:', error)
+    log.error('Error in field-tags GET', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

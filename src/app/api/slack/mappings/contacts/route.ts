@@ -11,6 +11,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:contacts')
 
 const CreateMappingSchema = z.object({
   partner_id: z.string().uuid('partner_id must be a valid UUID'),
@@ -35,7 +38,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching partner-contact mappings:', error)
+      log.error('Error fetching partner-contact mappings', error)
       return ApiErrors.database()
     }
 
@@ -63,7 +66,7 @@ export async function GET() {
 
     return apiSuccess({ mappings: enriched, count: enriched.length })
   } catch (error) {
-    console.error('GET partner-contact mappings error:', error)
+    log.error('GET partner-contact mappings error', error)
     return ApiErrors.internal()
   }
 }
@@ -121,7 +124,7 @@ export async function POST(request: NextRequest) {
       .eq('entity_id', partner_id)
 
     if (countError) {
-      console.error('Error checking existing partner contacts:', countError)
+      log.error('Error checking existing partner contacts', countError)
       return ApiErrors.database()
     }
 
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error saving partner-contact mapping:', error)
+      log.error('Error saving partner-contact mapping', error)
       return ApiErrors.database()
     }
 
@@ -156,7 +159,7 @@ export async function POST(request: NextRequest) {
       },
     }, 201)
   } catch (error) {
-    console.error('POST partner-contact mapping error:', error)
+    log.error('POST partner-contact mapping error', error)
     return ApiErrors.internal()
   }
 }
@@ -183,13 +186,13 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'slack_partner_contact')
 
     if (error) {
-      console.error('Error deleting partner-contact mapping:', error)
+      log.error('Error deleting partner-contact mapping', error)
       return ApiErrors.database()
     }
 
     return apiSuccess({ deleted: true })
   } catch (error) {
-    console.error('DELETE partner-contact mapping error:', error)
+    log.error('DELETE partner-contact mapping error', error)
     return ApiErrors.internal()
   }
 }
