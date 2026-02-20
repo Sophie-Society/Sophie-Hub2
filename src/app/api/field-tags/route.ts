@@ -1,19 +1,16 @@
-import { getServerSession } from 'next-auth'
 import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { authOptions } from '@/lib/auth/config'
+import { requireAuth } from '@/lib/auth/api-auth'
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
 
 // GET /api/field-tags - Get all available field tags
 export async function GET() {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    }
+  const auth = await requireAuth()
+  if (!auth.authenticated) return auth.response
 
+  try {
     const { data: tags, error } = await supabase
       .from('field_tags')
       .select('id, name, color, description')

@@ -152,7 +152,7 @@ export async function POST(
         return apiSuccess(
           {
             success: false,
-            error: error.message,
+            error: 'No key column is defined for this mapping. Please configure a key field in Data Enrichment.',
           },
           400
         )

@@ -291,7 +291,7 @@ export async function POST(
           tabName: tabMapping.tab_name,
           success: false,
           fieldsUpdated: [],
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Failed to sync from this source',
         })
       }
     }

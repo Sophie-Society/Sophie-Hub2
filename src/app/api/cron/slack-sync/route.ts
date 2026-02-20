@@ -77,10 +77,6 @@ export async function POST(request: NextRequest) {
     const durationMs = Date.now() - startTime
     console.error(`Slack sync cron: failed after ${durationMs}ms:`, error)
 
-    return apiError(
-      'INTERNAL_ERROR',
-      `Sync cron failed: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    )
+    return apiError('INTERNAL_ERROR', 'Sync cron failed', 500)
   }
 }

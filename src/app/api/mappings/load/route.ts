@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { LoadMappingResponse } from '@/types/enrichment'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:mappings:load')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -102,9 +105,9 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
     })
   } catch (error) {
-    console.error('Error loading mapping:', error)
+    logger.error('Error loading mapping', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to load mapping' },
       { status: 500 }
     )
   }

@@ -1,9 +1,15 @@
 import { getServerSession } from 'next-auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { authOptions } from '@/lib/auth/config'
 import { getSheetRawRows, detectHeaderRow } from '@/lib/google/sheets'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
 import { checkSheetsRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
+
+const RawRowsQuerySchema = z.object({
+  id: z.string().min(1, 'Spreadsheet ID is required'),
+  tab: z.string().min(1, 'Tab name is required'),
+})
 
 interface GoogleApiError {
   message?: string
@@ -98,16 +104,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const spreadsheetId = searchParams.get('id')
-    const tabName = searchParams.get('tab')
-
-    if (!spreadsheetId || !tabName) {
+    const parsed = RawRowsQuerySchema.safeParse(
+      Object.fromEntries(request.nextUrl.searchParams)
+    )
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing spreadsheet ID or tab name' },
+        { error: parsed.error.issues[0]?.message ?? 'Invalid query parameters' },
         { status: 400 }
       )
     }
+
+    const { id: spreadsheetId, tab: tabName } = parsed.data
 
     const data = await getSheetRawRows(accessToken, spreadsheetId, tabName)
     const headerDetection = detectHeaderRow(data.rows)

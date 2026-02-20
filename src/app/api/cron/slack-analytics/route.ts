@@ -48,10 +48,6 @@ export async function POST(request: NextRequest) {
     const durationMs = Date.now() - startTime
     console.error(`Slack analytics cron: failed after ${durationMs}ms:`, error)
 
-    return apiError(
-      'INTERNAL_ERROR',
-      `Analytics cron failed: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    )
+    return apiError('INTERNAL_ERROR', 'Analytics cron failed', 500)
   }
 }

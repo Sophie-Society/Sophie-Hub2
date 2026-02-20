@@ -5,6 +5,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getSyncEngine } from '@/lib/sync'
 import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:sync:staff-auto-match')
 
 const supabase = getAdminClient()
 
@@ -195,6 +198,7 @@ export async function POST(
           error: result.stats.errors.find(e => e.severity === 'error')?.message || null,
         })
       } catch (error) {
+        logger.error(`Staff auto-match failed for tab ${tab.tab_name}`, error)
         tabResults.push({
           tab_mapping_id: tab.id,
           tab_name: tab.tab_name,
@@ -202,7 +206,7 @@ export async function POST(
           rows_processed: 0,
           rows_matched: 0,
           rows_skipped: 0,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Processing failed for this tab',
         })
       }
     }

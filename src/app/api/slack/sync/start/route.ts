@@ -39,11 +39,9 @@ export async function POST() {
 
     return apiSuccess({ run_id: runId }, 201)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-
     // createSyncRun throws if a run is already in progress
-    if (message.includes('already')) {
-      return apiError('CONFLICT', message, 409)
+    if (error instanceof Error && error.message.includes('already')) {
+      return apiError('CONFLICT', 'A sync run is already in progress. Please wait for it to complete.', 409)
     }
 
     console.error('POST sync/start error:', error)

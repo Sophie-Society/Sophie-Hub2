@@ -22,6 +22,9 @@ import type { GoogleDirectoryUser } from '@/lib/google-workspace/types'
 import type { DirectoryDriftEvent } from '@/lib/google-workspace/types'
 import { refreshGoogleWorkspaceStaffApprovalQueue } from '@/lib/google-workspace/staff-approval-queue'
 import { SYNC } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:google-workspace:sync')
 
 function isSnapshotSchemaError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code
@@ -68,11 +71,10 @@ export async function POST() {
         includeDeleted: false, // Google's deleted-user API has a 20-day window; we handle tombstones locally
       })
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Directory pull failed'
-      console.error('Directory sync: API pull failed:', msg)
+      logger.error('Directory sync: API pull failed', error)
       return apiSuccess({
         success: false,
-        error: `Directory pull failed: ${msg}. No changes applied.`,
+        error: 'Directory pull failed. Check Google Workspace credentials and try again. No changes applied.',
         tombstoned: 0,
       })
     }

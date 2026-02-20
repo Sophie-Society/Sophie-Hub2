@@ -50,10 +50,6 @@ export async function POST(request: NextRequest) {
     const durationMs = Date.now() - startTime
     console.error(`Partner type reconciliation cron: failed after ${durationMs}ms:`, error)
 
-    return apiError(
-      'INTERNAL_ERROR',
-      `Partner type reconciliation cron failed: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    )
+    return apiError('INTERNAL_ERROR', 'Partner type reconciliation cron failed', 500)
   }
 }

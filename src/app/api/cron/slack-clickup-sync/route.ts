@@ -34,8 +34,7 @@ export async function POST(request: NextRequest) {
       duration_ms: Date.now() - start,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
     console.error('Slack ClickUp sync cron failed:', error)
-    return apiError('INTERNAL_ERROR', `Slack ClickUp sync failed: ${message}`, 500)
+    return apiError('INTERNAL_ERROR', 'Slack ClickUp sync failed', 500)
   }
 }
