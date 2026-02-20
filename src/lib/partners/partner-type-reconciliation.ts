@@ -51,6 +51,37 @@ export interface PartnerTypeReconciliationRunInput {
   driftOnly?: boolean
 }
 
+export interface PartnerTypeReconciliationListResult {
+  rows: Omit<PartnerTypeReconciliationRow, 'update_fields'>[]
+  total: number
+  has_more: boolean
+  summary: {
+    legacy_mismatch_count: number
+    persistence_drift_count: number
+  }
+}
+
+export interface PartnerTypeReconciliationRunResult {
+  dry_run: boolean
+  scanned: number
+  candidates: number
+  updated: number
+  failed: number
+  sample: Array<{
+    id: string
+    brand_name: string
+    computed_partner_type: CanonicalPartnerType | null
+    persisted_partner_type: CanonicalPartnerType | null
+    legacy_mismatch: boolean
+    persistence_drift: boolean
+  }>
+  errors: Array<{ id: string; brand_name: string; error: string }>
+  summary: {
+    legacy_mismatch_count: number
+    persistence_drift_count: number
+  }
+}
+
 type PartnerRow = {
   id: string
   brand_name: string
@@ -175,7 +206,7 @@ async function fetchPartners(limit: number, search?: string): Promise<PartnerRow
   return (data || []) as PartnerRow[]
 }
 
-export async function listPartnerTypeReconciliation(input: PartnerTypeReconciliationListInput) {
+export async function listPartnerTypeReconciliation(input: PartnerTypeReconciliationListInput): Promise<PartnerTypeReconciliationListResult> {
   const rows = await fetchPartners(5000, input.search)
   const projected = rows.map(projectPartner)
 
@@ -206,7 +237,7 @@ export async function listPartnerTypeReconciliation(input: PartnerTypeReconcilia
   }
 }
 
-export async function runPartnerTypeReconciliation(input: PartnerTypeReconciliationRunInput) {
+export async function runPartnerTypeReconciliation(input: PartnerTypeReconciliationRunInput): Promise<PartnerTypeReconciliationRunResult> {
   const rows = await fetchPartners(input.limit)
   const projected = rows.map(projectPartner)
 

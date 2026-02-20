@@ -13,6 +13,7 @@
  */
 
 import { google } from 'googleapis'
+import type { admin_directory_v1 } from 'googleapis'
 import type { GoogleDirectoryUser } from './types'
 
 // =============================================================================
@@ -158,8 +159,7 @@ export async function getUser(
 // Internal Helpers
 // =============================================================================
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function mapApiUser(u: any): GoogleDirectoryUser {
+function mapApiUser(u: admin_directory_v1.Schema$User): GoogleDirectoryUser {
   const phones = u.phones as Array<{ value: string; type: string; primary?: boolean }> | undefined
   const organizations = u.organizations as Array<Record<string, unknown>> | undefined
   const primaryOrg = organizations?.find(org => Boolean(org.primary)) || organizations?.[0]
@@ -172,8 +172,8 @@ function mapApiUser(u: any): GoogleDirectoryUser {
     : undefined
 
   return {
-    id: u.id,
-    primaryEmail: u.primaryEmail,
+    id: u.id ?? '',
+    primaryEmail: u.primaryEmail ?? '',
     name: {
       givenName: u.name?.givenName || '',
       familyName: u.name?.familyName || '',
@@ -194,7 +194,6 @@ function mapApiUser(u: any): GoogleDirectoryUser {
     costCenter: (primaryOrg?.costCenter as string | undefined) || undefined,
     location: (primaryOrg?.location as string | undefined) || undefined,
     managerEmail,
-    rawProfile: u,
+    rawProfile: u as Record<string, unknown>,
   }
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
