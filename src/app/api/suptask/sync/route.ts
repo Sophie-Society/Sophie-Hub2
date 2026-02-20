@@ -76,13 +76,17 @@ export async function POST(request: NextRequest) {
     // Fetch tickets from SupTask API
     const { tickets, errors, abortReason } = await getTicketRange(start, end)
 
-    // Upsert tickets to database
+    // Batch upsert tickets in chunks of 50 (avoids N+1 per-ticket queries)
     let upsertedCount = 0
-    for (const ticket of tickets) {
-      const { error: upsertErr } = await supabase
+    const UPSERT_BATCH_SIZE = 50
+    const syncedAt = new Date().toISOString()
+
+    for (let i = 0; i < tickets.length; i += UPSERT_BATCH_SIZE) {
+      const batch = tickets.slice(i, i + UPSERT_BATCH_SIZE)
+      const { error: batchErr } = await supabase
         .from('suptask_tickets')
         .upsert(
-          {
+          batch.map(ticket => ({
             team_id: ticket.teamId,
             ticket_number: ticket.ticketNumber,
             status: ticket.status,
@@ -95,18 +99,20 @@ export async function POST(request: NextRequest) {
             raw_payload: ticket.raw,
             ticket_created_at: ticket.createdAt,
             ticket_updated_at: ticket.updatedAt,
-            last_synced_at: new Date().toISOString(),
-          },
+            last_synced_at: syncedAt,
+          })),
           { onConflict: 'team_id,ticket_number' }
         )
 
-      if (!upsertErr) {
-        upsertedCount++
+      if (batchErr) {
+        for (const ticket of batch) {
+          errors.push({
+            ticketNumber: ticket.ticketNumber,
+            error: `Batch upsert failed: ${batchErr.message}`,
+          })
+        }
       } else {
-        errors.push({
-          ticketNumber: ticket.ticketNumber,
-          error: `Upsert failed: ${upsertErr.message}`,
-        })
+        upsertedCount += batch.length
       }
     }
 

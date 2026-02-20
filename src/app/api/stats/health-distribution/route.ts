@@ -25,6 +25,7 @@ async function fetchAllPartnersForHealth(supabase: ReturnType<typeof getAdminCli
     const { data, error } = await supabase
       .from('partners')
       .select('id, brand_name, status, source_data')
+      .order('id', { ascending: true })
       .range(offset, offset + PARTNER_PAGE_SIZE - 1)
 
     if (error) throw error

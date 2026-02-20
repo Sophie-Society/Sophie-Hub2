@@ -107,12 +107,19 @@ export async function POST() {
         }
       }
 
-      // Also update staff.slack_id for all matches
-      for (const m of matches) {
-        await supabase
-          .from('staff')
-          .update({ slack_id: m.slack_user_id })
-          .eq('id', m.staff_id)
+      // Update staff.slack_id for all matches — each row needs a different value,
+      // so parallelize in batches of 50 (each staff member gets a unique slack_id)
+      const SLACK_UPDATE_BATCH = 50
+      for (let i = 0; i < matches.length; i += SLACK_UPDATE_BATCH) {
+        const batch = matches.slice(i, i + SLACK_UPDATE_BATCH)
+        await Promise.all(
+          batch.map(m =>
+            supabase
+              .from('staff')
+              .update({ slack_id: m.slack_user_id })
+              .eq('id', m.staff_id)
+          )
+        )
       }
     }
 

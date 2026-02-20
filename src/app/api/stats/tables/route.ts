@@ -18,6 +18,7 @@ async function fetchAllPartnersForStats(): Promise<PartnerStatsRow[]> {
     const { data, error } = await supabase
       .from('partners')
       .select('id, source_data')
+      .order('id', { ascending: true })
       .range(offset, offset + PARTNER_PAGE_SIZE - 1)
 
     if (error) throw error

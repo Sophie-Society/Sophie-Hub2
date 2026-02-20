@@ -200,20 +200,28 @@ export async function POST() {
     }
 
     // 5. Tombstone users NOT in this pull (safe: full pull completed successfully)
-    let tombstoned = 0
+    // Collect all IDs to tombstone first, then batch update in one query
+    const toTombstone: Array<{ googleId: string; email: string }> = []
     for (const [googleId, existing] of Array.from(existingByGoogleId.entries())) {
       if (!pulledGoogleIds.has(googleId) && !existing.is_deleted) {
-        const { error } = await supabase
-          .from('google_workspace_directory_snapshot')
-          .update({ is_deleted: true, updated_at: now })
-          .eq('google_user_id', googleId)
+        toTombstone.push({ googleId, email: existing.primary_email })
+      }
+    }
 
-        if (!error) {
-          tombstoned++
+    let tombstoned = 0
+    if (toTombstone.length > 0) {
+      const { error } = await supabase
+        .from('google_workspace_directory_snapshot')
+        .update({ is_deleted: true, updated_at: now })
+        .in('google_user_id', toTombstone.map(t => t.googleId))
+
+      if (!error) {
+        tombstoned = toTombstone.length
+        for (const { googleId, email } of toTombstone) {
           driftEvents.push({
             type: 'user_deleted',
             google_user_id: googleId,
-            email: existing.primary_email,
+            email,
             name: '',
             details: 'No longer in directory pull',
           })

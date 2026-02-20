@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Find the data source
+    // Find the data source — select('*') intentional: all columns spread into LoadMappingResponse.dataSource
     let query = supabase.from('data_sources').select('*')
 
     if (dataSourceId) {
@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Load tab mappings with their column mappings and patterns
+    // select('*') intentional: all columns spread into LoadMappingResponse.tabMappings via ...tab
     const { data: tabMappings, error: tabError } = await supabase
       .from('tab_mappings')
       .select('*')
@@ -59,11 +60,13 @@ export async function GET(request: NextRequest) {
 
     const [allMappingsResult, allPatternsResult] = tabIds.length > 0
       ? await Promise.all([
+          // select('*') intentional: all columns spread into LoadMappingResponse columnMappings arrays
           supabase
             .from('column_mappings')
             .select('*')
             .in('tab_mapping_id', tabIds)
             .order('source_column_index'),
+          // select('*') intentional: all columns spread into LoadMappingResponse patterns arrays
           supabase
             .from('column_patterns')
             .select('*')
