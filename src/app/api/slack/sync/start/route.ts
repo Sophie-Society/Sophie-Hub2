@@ -12,6 +12,9 @@ import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
 import { createSyncRun } from '@/lib/slack/sync'
 import { checkRateLimit, RATE_LIMITS, rateLimitHeaders } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:sync:start')
 
 export async function POST() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -35,18 +38,16 @@ export async function POST() {
   try {
     const runId = await createSyncRun(auth.user.email)
 
-    console.log(`Sync run started by ${auth.user.email}: ${runId}`)
+    log.info(`Sync run started by ${auth.user.email}: ${runId}`)
 
     return apiSuccess({ run_id: runId }, 201)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-
     // createSyncRun throws if a run is already in progress
-    if (message.includes('already')) {
-      return apiError('CONFLICT', message, 409)
+    if (error instanceof Error && error.message.includes('already')) {
+      return apiError('CONFLICT', 'A sync run is already in progress. Please wait for it to complete.', 409)
     }
 
-    console.error('POST sync/start error:', error)
+    log.error('POST sync/start error', error)
     return ApiErrors.internal()
   }
 }

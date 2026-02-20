@@ -43,6 +43,7 @@ interface SectionContainerProps {
   onToggleCollapse: (sectionId: string, collapsed: boolean) => void
   onMoveWidget: (widgetId: string, gridColumn: number, gridRow: number) => void
   onResizeWidget: (widgetId: string, colSpan: number, rowSpan: number) => void
+  allowCollapse?: boolean
 }
 
 export function SectionContainer({
@@ -60,6 +61,7 @@ export function SectionContainer({
   onToggleCollapse,
   onMoveWidget,
   onResizeWidget,
+  allowCollapse = true,
 }: SectionContainerProps) {
   const [isCollapsed, setIsCollapsed] = useState(section.collapsed)
   const [gridDimensions, setGridDimensions] = useState({ cellWidth: 200, rowHeight: 200 })
@@ -178,6 +180,7 @@ export function SectionContainer({
   }, [])
 
   function handleToggle() {
+    if (!allowCollapse) return
     const newState = !isCollapsed
     setIsCollapsed(newState)
     onToggleCollapse(section.id, newState)
@@ -237,39 +240,50 @@ export function SectionContainer({
     <div id={`section-${section.id}`} className="space-y-3 scroll-mt-20">
       {/* Section header */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={handleToggle}
-          className="flex items-center gap-2 group"
-        >
-          <motion.div
-            initial={false}
-            animate={{ rotate: isCollapsed ? -90 : 0 }}
-            transition={{ duration: duration.ui, ease: easeInOut }}
+        {allowCollapse ? (
+          <button
+            onClick={handleToggle}
+            className="flex items-center gap-2 group"
           >
-            <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-          </motion.div>
-          <h3 className="text-sm font-semibold tracking-tight group-hover:text-foreground/80 transition-colors">
-            {section.title}
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            {section.widgets.length} widget{section.widgets.length !== 1 ? 's' : ''}
-          </span>
-        </button>
+            <motion.div
+              initial={false}
+              animate={{ rotate: isCollapsed ? -90 : 0 }}
+              transition={{ duration: duration.ui, ease: easeInOut }}
+            >
+              <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            </motion.div>
+            <h3 className="text-sm font-semibold tracking-tight group-hover:text-foreground/80 transition-colors">
+              {section.title}
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              {section.widgets.length} widget{section.widgets.length !== 1 ? 's' : ''}
+            </span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold tracking-tight">{section.title}</h3>
+            <span className="text-xs text-muted-foreground">
+              {section.widgets.length} widget{section.widgets.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => onAddWidget(section.id)}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add Widget
-        </Button>
+        {isEditMode && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => onAddWidget(section.id)}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Add Widget
+          </Button>
+        )}
       </div>
 
       {/* Collapsible content */}
       <AnimatePresence initial={false}>
-        {!isCollapsed && (
+        {(!allowCollapse || !isCollapsed) && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -356,13 +370,19 @@ export function SectionContainer({
                   )}
               </DndContext>
             ) : (
-              <button
-                onClick={() => onAddWidget(section.id)}
-                className="w-full py-8 border-2 border-dashed border-border/40 rounded-xl text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors flex flex-col items-center gap-2"
-              >
-                <Plus className="h-5 w-5" />
-                <span className="text-sm">Add your first widget to this section</span>
-              </button>
+              isEditMode ? (
+                <button
+                  onClick={() => onAddWidget(section.id)}
+                  className="w-full py-8 border-2 border-dashed border-border/40 rounded-xl text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors flex flex-col items-center gap-2"
+                >
+                  <Plus className="h-5 w-5" />
+                  <span className="text-sm">Add your first widget to this section</span>
+                </button>
+              ) : (
+                <div className="w-full py-8 border border-dashed border-border/40 rounded-xl text-muted-foreground flex flex-col items-center gap-2">
+                  <span className="text-sm">No widgets in this section</span>
+                </div>
+              )
             )}
           </motion.div>
         )}

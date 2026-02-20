@@ -10,6 +10,9 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
 import { isStaffEligibleForAutoMapping } from '@/lib/staff/lifecycle'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:sync:status')
 
 function isSnapshotSchemaError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code
@@ -53,7 +56,7 @@ export async function GET() {
           setup_required: true,
         })
       }
-      console.error('Failed to fetch sync status:', error)
+      log.error('Failed to fetch sync status', error)
       return ApiErrors.database()
     }
 
@@ -92,7 +95,7 @@ export async function GET() {
       .eq('status', 'ignored')
 
     if (ignoredApprovalError && !isQueueSchemaError(ignoredApprovalError)) {
-      console.error('Failed to fetch ignored staff approvals:', ignoredApprovalError)
+      log.error('Failed to fetch ignored staff approvals', ignoredApprovalError)
     }
 
     const ignoredGoogleUsers = new Set(
@@ -145,7 +148,7 @@ export async function GET() {
       .eq('status', 'pending')
 
     if (approvalError && !isQueueSchemaError(approvalError)) {
-      console.error('Failed to fetch pending staff approvals:', approvalError)
+      log.error('Failed to fetch pending staff approvals', approvalError)
     }
 
     return apiSuccess({
@@ -163,7 +166,7 @@ export async function GET() {
       has_snapshot: total > 0,
     })
   } catch (error) {
-    console.error('Sync status error:', error)
+    log.error('Sync status error', error)
     return ApiErrors.internal()
   }
 }

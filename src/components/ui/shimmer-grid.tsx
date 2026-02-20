@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -60,9 +61,8 @@ function ShimmerCell({
       style={{
         height,
         animationDelay: `${delay}ms`,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ['--shimmer-dur' as any]: `${duration}s`,
-      }}
+        '--shimmer-dur': `${duration}s`,
+      } as CSSProperties & { '--shimmer-dur': string }}
     />
   )
 }

@@ -13,6 +13,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:analytics:summary')
 
 const QuerySchema = z.object({
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest) {
       .lte('date', dateTo)
 
     if (error) {
-      console.error('Error fetching analytics summary:', error)
+      log.error('Error fetching analytics summary', error)
       return ApiErrors.database()
     }
 
@@ -179,7 +182,7 @@ export async function GET(request: NextRequest) {
       pod_leader_leaderboard: leaderboard,
     })
   } catch (error) {
-    console.error('GET analytics/summary error:', error)
+    log.error('GET analytics/summary error', error)
     return ApiErrors.internal()
   }
 }

@@ -15,6 +15,9 @@ import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateChannelsCache } from '@/lib/connectors/slack-cache'
 import { SLACK } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:channels:auto-match')
 
 const AutoMatchSchema = z.object({
   /** Channel prefix to strip (e.g., "client-") */
@@ -29,6 +32,26 @@ const AutoMatchSchema = z.object({
  */
 function normalize(str: string): string {
   return str.toLowerCase().replace(/[-_\s]+/g, '').trim()
+}
+
+type SlackChannelType = 'partner_facing' | 'alerts' | 'internal'
+
+function detectChannelType(str: string): SlackChannelType {
+  if (SLACK.PARTNER_CHANNEL_SUFFIXES.some((suffix) => str.endsWith(suffix))) return 'alerts'
+  if (SLACK.PARTNER_CHANNEL_INTERNAL_SUFFIXES.some((suffix) => str.endsWith(suffix))) return 'internal'
+  return 'partner_facing'
+}
+
+function stripPartnerSuffixes(str: string): string {
+  let value = str
+  const allSuffixes = [...SLACK.PARTNER_CHANNEL_SUFFIXES, ...SLACK.PARTNER_CHANNEL_INTERNAL_SUFFIXES]
+  for (const suffix of allSuffixes) {
+    if (value.endsWith(suffix)) {
+      value = value.slice(0, -suffix.length)
+      break
+    }
+  }
+  return value
 }
 
 export async function POST(request: NextRequest) {
@@ -59,7 +82,7 @@ export async function POST(request: NextRequest) {
       .order('brand_name')
 
     if (partnerError) {
-      console.error('Failed to fetch partners:', partnerError)
+      log.error('Failed to fetch partners', partnerError)
       return ApiErrors.database()
     }
 
@@ -84,6 +107,8 @@ export async function POST(request: NextRequest) {
       channel_name: string
       partner_id: string
       partner_name: string
+      channel_type: SlackChannelType
+      brand_key: string
       confidence: number
     }> = []
     const unmatchedChannels: string[] = []
@@ -102,7 +127,7 @@ export async function POST(request: NextRequest) {
       // Skip archived channels
       if (channel.is_archived) continue
 
-      // Strip prefix and normalize
+      // Strip prefix and partner-channel suffixes (e.g. "brand-alerts")
       let channelBrand = channel.name
       if (channelBrand.startsWith(prefix)) {
         channelBrand = channelBrand.slice(prefix.length)
@@ -110,6 +135,9 @@ export async function POST(request: NextRequest) {
         // Channel doesn't match pattern, skip
         continue
       }
+      const channelType = detectChannelType(channelBrand)
+      channelBrand = stripPartnerSuffixes(channelBrand)
+      if (!channelBrand.trim()) continue
 
       const normalizedChannel = normalize(channelBrand)
 
@@ -122,6 +150,8 @@ export async function POST(request: NextRequest) {
           partner_id: exactMatch.id,
           partner_name: exactMatch.brand_name,
           confidence: 1.0,
+          channel_type: channelType,
+          brand_key: normalizedChannel,
         })
         continue
       }
@@ -146,6 +176,8 @@ export async function POST(request: NextRequest) {
           partner_id: bestMatch.id,
           partner_name: bestMatch.brand_name,
           confidence: bestMatch.score,
+          channel_type: channelType,
+          brand_key: normalizedChannel,
         })
       } else {
         unmatchedChannels.push(channel.name)
@@ -160,7 +192,13 @@ export async function POST(request: NextRequest) {
         entity_id: m.partner_id,
         source: 'slack_channel' as const,
         external_id: m.channel_id,
-        metadata: { channel_name: m.channel_name, match_type: 'auto', confidence: m.confidence },
+        metadata: {
+          channel_name: m.channel_name,
+          channel_type: m.channel_type,
+          brand_key: m.brand_key,
+          match_type: 'auto',
+          confidence: m.confidence,
+        },
         created_by: auth.user.email,
       }))
 
@@ -172,7 +210,7 @@ export async function POST(request: NextRequest) {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`Channel mapping batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`Channel mapping batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
@@ -203,6 +241,7 @@ export async function POST(request: NextRequest) {
       auto_matched_list: highConfidence.map(m => ({
         channel_name: m.channel_name,
         partner_name: m.partner_name,
+        channel_type: m.channel_type,
         confidence: m.confidence,
       })),
       needs_review_list: lowConfidence.map(m => ({
@@ -210,12 +249,13 @@ export async function POST(request: NextRequest) {
         channel_name: m.channel_name,
         partner_id: m.partner_id,
         partner_name: m.partner_name,
+        channel_type: m.channel_type,
         confidence: m.confidence,
       })),
       unmatched_channels: unmatchedChannels.slice(0, 30),
     })
   } catch (error) {
-    console.error('Channel auto-match error:', error)
+    log.error('Channel auto-match error', error)
     return ApiErrors.internal()
   }
 }

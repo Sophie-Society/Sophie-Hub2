@@ -6,6 +6,9 @@ import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { hasSystemSetting } from '@/lib/settings'
 import { audit } from '@/lib/audit'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:suggest-mapping')
 
 // =============================================================================
 // Validation Schema
@@ -151,7 +154,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('AI suggestion error:', error)
+    log.error('AI suggestion error', error)
 
     // Check for specific Anthropic errors
     if (error instanceof Error) {

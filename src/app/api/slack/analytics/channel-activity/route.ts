@@ -11,6 +11,9 @@ import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:analytics:channel-activity')
 
 const QuerySchema = z.object({
   channel_id: z.string().optional(),
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
     const { data: metrics, error } = await query
 
     if (error) {
-      console.error('Error fetching channel activity:', error)
+      log.error('Error fetching channel activity', error)
       return ApiErrors.database()
     }
 
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest) {
       date_range: { from: date_from, to: date_to },
     })
   } catch (error) {
-    console.error('GET analytics/channel-activity error:', error)
+    log.error('GET analytics/channel-activity error', error)
     return ApiErrors.internal()
   }
 }

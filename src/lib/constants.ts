@@ -73,6 +73,20 @@ export const SLACK = {
   PAGE_SIZE: 200,
   /** Channel prefixes to skip during auto-match (internal channels) */
   INTERNAL_PREFIXES: ['team-', 'ops-', 'admin-', 'int-', 'internal-', 'eng-', 'hr-', 'general'],
+  /** Channel suffixes to strip before partner matching (e.g. brand-alerts -> brand) */
+  PARTNER_CHANNEL_SUFFIXES: ['-alerts', '_alerts', ' alerts', '-alert', '_alert', ' alert'],
+  /** Internal channel suffixes tied to a brand (e.g. brand-internal, brand-backend) */
+  PARTNER_CHANNEL_INTERNAL_SUFFIXES: [
+    '-internal',
+    '_internal',
+    ' internal',
+    '-backend',
+    '_backend',
+    ' backend',
+    '-back-end',
+    '_back_end',
+    ' back end',
+  ],
 } as const
 
 // =============================================================================

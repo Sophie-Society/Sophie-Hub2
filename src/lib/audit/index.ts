@@ -5,7 +5,7 @@
  * for security, compliance, and debugging purposes.
  */
 
-import { getAdminClient } from '@/lib/supabase/admin'
+import { insertAuditLog, findAuditLogs, type AuditLogFilters } from '@/lib/repositories/audit.repository'
 import { createLogger } from '@/lib/logger'
 import { API } from '@/lib/constants'
 
@@ -73,38 +73,26 @@ export interface AuditEntry {
 // =============================================================================
 
 class AuditService {
-  private supabase = getAdminClient()
-
   /**
    * Log an audit entry
    */
   async log(entry: AuditEntry): Promise<string | null> {
     try {
-      const { data, error } = await this.supabase
-        .from('mapping_audit_log')
-        .insert({
-          user_id: entry.userId || null,
-          user_email: entry.userEmail || null,
-          action: entry.action,
-          resource_type: entry.resourceType,
-          resource_id: entry.resourceId || null,
-          resource_name: entry.resourceName || null,
-          changes: entry.changes || null,
-          metadata: entry.metadata || null,
-          ip_address: entry.ipAddress || null,
-          user_agent: entry.userAgent || null,
-        })
-        .select('id')
-        .single()
-
-      if (error) {
-        // Log to console but don't throw - audit failures shouldn't break operations
-        log.error('Audit log error', error)
-        return null
-      }
-
-      return data.id
+      const id = await insertAuditLog({
+        user_id: entry.userId || null,
+        user_email: entry.userEmail || null,
+        action: entry.action,
+        resource_type: entry.resourceType,
+        resource_id: entry.resourceId || null,
+        resource_name: entry.resourceName || null,
+        changes: entry.changes || null,
+        metadata: entry.metadata || null,
+        ip_address: entry.ipAddress || null,
+        user_agent: entry.userAgent || null,
+      })
+      return id
     } catch (error) {
+      // Audit failures shouldn't break operations
       log.error('Audit log exception', error)
       return null
     }
@@ -186,34 +174,20 @@ class AuditService {
       resourceId?: string
       userId?: string
     }
-  ) {
-    let query = this.supabase
-      .from('mapping_audit_log')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(limit)
-
-    if (filters?.action) {
-      query = query.eq('action', filters.action)
-    }
-    if (filters?.resourceType) {
-      query = query.eq('resource_type', filters.resourceType)
-    }
-    if (filters?.resourceId) {
-      query = query.eq('resource_id', filters.resourceId)
-    }
-    if (filters?.userId) {
-      query = query.eq('user_id', filters.userId)
+  ): Promise<Record<string, unknown>[]> {
+    const repoFilters: AuditLogFilters = {
+      action: filters?.action,
+      resourceType: filters?.resourceType,
+      resourceId: filters?.resourceId,
+      userId: filters?.userId,
     }
 
-    const { data, error } = await query
-
-    if (error) {
+    try {
+      return await findAuditLogs(limit, repoFilters)
+    } catch (error) {
       log.error('Error fetching audit logs', error)
       return []
     }
-
-    return data
   }
 
   /**

@@ -10,6 +10,7 @@ import { getConnector, type GoogleSheetConnectorConfig } from '@/lib/connectors'
 import { audit } from '@/lib/audit'
 import { createLogger } from '@/lib/logger'
 import { SYNC } from '@/lib/constants'
+import { buildPartnerTypePersistenceFields } from '@/lib/partners/computed-partner-type'
 import { applyTransform } from './transforms'
 import type {
   SyncOptions,
@@ -90,7 +91,11 @@ export class SyncEngine {
       `${config.dataSource.name} → ${config.tabMapping.tab_name}`,
       options.triggeredBy,
       undefined,
-      { dry_run: options.dryRun }
+      {
+        dry_run: options.dryRun,
+        match_only_existing: options.matchOnlyExisting,
+        create_missing_as_contractor: options.createMissingAsContractor,
+      }
     )
 
     try {
@@ -158,6 +163,8 @@ export class SyncEngine {
           rows_updated: stats.rowsUpdated,
           rows_skipped: stats.rowsSkipped,
           dry_run: options.dryRun,
+          match_only_existing: options.matchOnlyExisting,
+          create_missing_as_contractor: options.createMissingAsContractor,
           duration_ms: durationMs,
         }
       )
@@ -183,6 +190,8 @@ export class SyncEngine {
         {
           error_message: errorMessage,
           dry_run: options.dryRun,
+          match_only_existing: options.matchOnlyExisting,
+          create_missing_as_contractor: options.createMissingAsContractor,
           duration_ms: Date.now() - startTime,
         }
       )
@@ -387,13 +396,83 @@ export class SyncEngine {
         // O(1) lookup from pre-fetched map instead of per-row DB query
         const existing = existingMap.get(keyValue.toLowerCase()) || null
 
+        if (options.matchOnlyExisting && !existing) {
+          changes.push({
+            entity: config.tabMapping.primary_entity,
+            keyField: keyMapping.target_field,
+            keyValue,
+            type: 'skip',
+            fields: {},
+            skipReason: `No existing ${config.tabMapping.primary_entity} record matched by key`,
+            sourceData: rawCapture,
+          })
+          continue
+        }
+
         // Apply authority rules
         const authorizedFields = options.forceOverwrite
           ? fields
           : this.filterByAuthority(fields, config.columnMappings, !!existing)
 
+        let normalizedFields = authorizedFields
+        if (
+          options.createMissingAsContractor &&
+          !existing &&
+          config.tabMapping.primary_entity === 'staff'
+        ) {
+          const candidate: Record<string, unknown> = { ...authorizedFields }
+
+          const email =
+            keyMapping.target_field === 'email'
+              ? keyValue
+              : String(candidate.email || '').trim()
+
+          if (!email) {
+            changes.push({
+              entity: config.tabMapping.primary_entity,
+              keyField: keyMapping.target_field,
+              keyValue,
+              type: 'skip',
+              fields: {},
+              skipReason: 'Cannot create contractor: missing email',
+              sourceData: rawCapture,
+            })
+            continue
+          }
+
+          candidate.email = email
+
+          const fullNameValue = String(candidate.full_name || '').trim()
+          candidate.full_name = fullNameValue || this.inferNameFromEmail(email)
+
+          if (!candidate.full_name || String(candidate.full_name).trim().length === 0) {
+            changes.push({
+              entity: config.tabMapping.primary_entity,
+              keyField: keyMapping.target_field,
+              keyValue,
+              type: 'skip',
+              fields: {},
+              skipReason: 'Cannot create contractor: missing full_name',
+              sourceData: rawCapture,
+            })
+            continue
+          }
+
+          if (!candidate.role || String(candidate.role).trim().length === 0) {
+            candidate.role = 'contractor'
+          }
+          if (!candidate.status || String(candidate.status).trim().length === 0) {
+            candidate.status = 'active'
+          }
+          if (!candidate.department || String(candidate.department).trim().length === 0) {
+            candidate.department = 'contractor'
+          }
+
+          normalizedFields = candidate
+        }
+
         // Determine change type
-        if (Object.keys(authorizedFields).length === 0) {
+        if (Object.keys(normalizedFields).length === 0) {
           changes.push({
             entity: config.tabMapping.primary_entity,
             keyField: keyMapping.target_field,
@@ -410,7 +489,7 @@ export class SyncEngine {
             keyField: keyMapping.target_field,
             keyValue,
             type: existing ? 'update' : 'create',
-            fields: authorizedFields,
+            fields: normalizedFields,
             existing: existing ?? undefined,
             sourceData: rawCapture,
           })
@@ -534,15 +613,42 @@ export class SyncEngine {
     if (keyValues.length === 0) return resultMap
 
     try {
+      // Staff auto-match relies on email bridging. Fetching staff emails once and
+      // indexing in-memory guarantees case-insensitive matching for mixed-case inputs.
+      if (entity === 'staff' && keyField === 'email') {
+        const { data, error } = await this.supabase
+          .from('staff')
+          .select('*')
+          .not('email', 'is', null)
+          // C-8: exclude soft-deleted staff so they are not matched or re-synced
+          .is('deleted_at', null)
+
+        if (error) {
+          log.error('batchFindExisting staff/email error', error.message)
+          return resultMap
+        }
+
+        for (const record of data || []) {
+          const key = String(record.email || '').trim().toLowerCase()
+          if (key) {
+            resultMap.set(key, record)
+          }
+        }
+
+        return resultMap
+      }
+
       // Supabase has a limit on query size, so batch in chunks of 500
       for (let i = 0; i < keyValues.length; i += SYNC.LOOKUP_CHUNK_SIZE) {
         const chunk = keyValues.slice(i, i + SYNC.LOOKUP_CHUNK_SIZE)
 
         // Use 'in' filter for batch lookup
+        // C-8: exclude soft-deleted records so deleted partners/staff/asins are not matched
         const { data, error } = await this.supabase
           .from(entity)
           .select('*')
           .in(keyField, chunk)
+          .is('deleted_at', null)
 
         if (error) {
           log.error('batchFindExisting error', error.message)
@@ -565,16 +671,28 @@ export class SyncEngine {
     return resultMap
   }
 
+  private inferNameFromEmail(email: string): string {
+    const localPart = email.split('@')[0] || ''
+    const cleaned = localPart.replace(/[._-]+/g, ' ').trim()
+    if (!cleaned) return ''
+    return cleaned
+      .split(' ')
+      .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ''))
+      .join(' ')
+  }
+
   private async findExisting(
     entity: EntityType,
     keyField: string,
     keyValue: string
   ): Promise<Record<string, unknown> | null> {
     try {
+      // C-8: exclude soft-deleted records so a deleted entity is not matched as "existing"
       const { data, error } = await this.supabase
         .from(entity)
         .select('*')
         .ilike(keyField, keyValue)
+        .is('deleted_at', null)
         .maybeSingle() // Use maybeSingle instead of single to avoid error on no match
 
       if (error) {
@@ -611,11 +729,23 @@ export class SyncEngine {
 
     // Batch creates — with ID capture for lineage tracking
     if (creates.length > 0) {
-      const createRecords = creates.map((c) => ({
-        [c.keyField]: c.keyValue,
-        ...c.fields,
-        ...(c.sourceData ? { source_data: c.sourceData } : {}),
-      }))
+      const createRecords = creates.map((c) => {
+        const record: Record<string, unknown> = {
+          [c.keyField]: c.keyValue,
+          ...c.fields,
+          ...(c.sourceData ? { source_data: c.sourceData } : {}),
+        }
+
+        if (config.tabMapping.primary_entity === 'partners') {
+          Object.assign(record, buildPartnerTypePersistenceFields({
+            sourceData: asPartnerSourceData(record.source_data),
+            podLeaderName: asString(record.pod_leader_name),
+            brandManagerName: asString(record.brand_manager_name),
+          }))
+        }
+
+        return record
+      })
 
       const keyField = creates[0].keyField
       const totalBatches = Math.ceil(createRecords.length / SYNC.UPSERT_BATCH_SIZE)
@@ -683,6 +813,20 @@ export class SyncEngine {
       if (update.sourceData) {
         const existingSourceData = (update.existing?.source_data as Record<string, unknown>) || {}
         updateFields.source_data = deepMergeSourceData(existingSourceData, update.sourceData)
+      }
+
+      if (config.tabMapping.primary_entity === 'partners') {
+        const sourceData = asPartnerSourceData(
+          updateFields.source_data ?? update.existing?.source_data
+        )
+        const podLeaderName = asString(updateFields.pod_leader_name ?? update.existing?.pod_leader_name)
+        const brandManagerName = asString(updateFields.brand_manager_name ?? update.existing?.brand_manager_name)
+
+        Object.assign(updateFields, buildPartnerTypePersistenceFields({
+          sourceData,
+          podLeaderName,
+          brandManagerName,
+        }))
       }
 
       const { error } = await this.supabase
@@ -817,10 +961,12 @@ export class SyncEngine {
       // Look up entity ID (cached)
       let entityId = entityIdCache.get(keyValue)
       if (entityId === undefined) {
+        // C-8: exclude soft-deleted entities so deleted partners are not linked to new weekly statuses
         const { data: entity } = await this.supabase
           .from(config.tabMapping.primary_entity)
           .select('id')
           .ilike(keyMapping.target_field, keyValue)
+          .is('deleted_at', null)
           .maybeSingle()
 
         const resolvedId: string | null = entity?.id ?? null
@@ -986,6 +1132,19 @@ function deepMergeSourceData(
   }
 
   return merged
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+function asPartnerSourceData(
+  value: unknown
+): Record<string, Record<string, Record<string, unknown>>> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, Record<string, Record<string, unknown>>>
 }
 
 /**

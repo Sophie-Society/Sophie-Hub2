@@ -19,6 +19,9 @@ interface WidgetWrapperProps {
   gridCellWidth?: number
   gridRowHeight?: number
   previewMode?: 'desktop' | 'tablet' | 'mobile'
+  showActionControls?: boolean
+  showResizeHandle?: boolean
+  showTitleBar?: boolean
   children: React.ReactNode
 }
 
@@ -36,6 +39,9 @@ export function WidgetWrapper({
   gridCellWidth = 200,
   gridRowHeight = 200,
   previewMode = 'desktop',
+  showActionControls = true,
+  showResizeHandle = true,
+  showTitleBar = true,
   children,
 }: WidgetWrapperProps) {
   const isMobilePreview = previewMode === 'mobile'
@@ -183,7 +189,7 @@ export function WidgetWrapper({
         zIndex: isResizing ? 40 : undefined,
       }
 
-  const showControls = isEditMode && (isHovered || (isActualMobile && isHovered))
+  const showControls = showActionControls && isEditMode && (isHovered || (isActualMobile && isHovered))
 
   // On mobile, tap toggles controls (since hover doesn't work on touch)
   const handleTap = useCallback(() => {
@@ -263,7 +269,7 @@ export function WidgetWrapper({
 
       {/* Resize corner handle (edit mode only, not during drag, hidden on actual mobile) */}
       <AnimatePresence>
-        {isEditMode && !isBeingDragged && !isDevicePreview && !isActualMobile && (
+        {showResizeHandle && isEditMode && !isBeingDragged && !isDevicePreview && !isActualMobile && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -307,7 +313,7 @@ export function WidgetWrapper({
       </AnimatePresence>
 
       {/* Title bar */}
-      {widget.title && (
+      {showTitleBar && widget.title && (
         <div className={cn("px-4 pt-3 pb-0", isEditMode && !isActualMobile && "pl-8 md:pl-8")}>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide" style={{ WebkitFontSmoothing: 'antialiased' }}>
             {widget.title}

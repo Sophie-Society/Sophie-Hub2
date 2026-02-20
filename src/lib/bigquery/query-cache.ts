@@ -12,8 +12,7 @@ interface QueryParams {
   view: string
   metrics: string[]
   aggregation?: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  date_range?: any
+  date_range?: unknown
   mode?: string
   group_by?: string
   sort_by?: string

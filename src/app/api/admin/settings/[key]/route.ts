@@ -4,6 +4,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { encrypt, decrypt, maskValue } from '@/lib/encryption'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:settings')
 
 interface RouteContext {
   params: Promise<{ key: string }>
@@ -42,7 +45,7 @@ export async function PUT(request: Request, context: RouteContext) {
     try {
       encryptedValue = encrypt(value)
     } catch (encryptError) {
-      console.error('Encryption failed:', encryptError)
+      log.error('Encryption failed', encryptError)
       return apiError(
         'ENCRYPTION_ERROR',
         'Encryption failed. Ensure ENCRYPTION_KEY is configured.',
@@ -70,7 +73,7 @@ export async function PUT(request: Request, context: RouteContext) {
       .single()
 
     if (error) {
-      console.error('Failed to save setting:', error)
+      log.error('Failed to save setting', error)
       return ApiErrors.database(error.message)
     }
 
@@ -80,7 +83,7 @@ export async function PUT(request: Request, context: RouteContext) {
       updated_at: data.updated_at,
     })
   } catch (error) {
-    console.error('Settings update error:', error)
+    log.error('Settings update error', error)
     return apiError('INTERNAL_ERROR', 'Failed to update setting', 500)
   }
 }
@@ -113,13 +116,13 @@ export async function DELETE(request: Request, context: RouteContext) {
       .eq('key', key)
 
     if (error) {
-      console.error('Failed to delete setting:', error)
+      log.error('Failed to delete setting', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ deleted: true })
   } catch (error) {
-    console.error('Settings delete error:', error)
+    log.error('Settings delete error', error)
     return apiError('INTERNAL_ERROR', 'Failed to delete setting', 500)
   }
 }
@@ -151,7 +154,7 @@ export async function GET(request: Request, context: RouteContext) {
       if (error.code === 'PGRST116') {
         return ApiErrors.notFound('Setting')
       }
-      console.error('Failed to fetch setting:', error)
+      log.error('Failed to fetch setting', error)
       return ApiErrors.database(error.message)
     }
 
@@ -161,7 +164,7 @@ export async function GET(request: Request, context: RouteContext) {
       try {
         decryptedValue = decrypt(data.value)
       } catch (decryptError) {
-        console.error('Decryption failed:', decryptError)
+        log.error('Decryption failed', decryptError)
         return apiError('DECRYPTION_ERROR', 'Failed to decrypt setting', 500)
       }
     }
@@ -173,7 +176,7 @@ export async function GET(request: Request, context: RouteContext) {
       updated_at: data.updated_at,
     })
   } catch (error) {
-    console.error('Settings fetch error:', error)
+    log.error('Settings fetch error', error)
     return apiError('INTERNAL_ERROR', 'Failed to fetch setting', 500)
   }
 }

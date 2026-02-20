@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { audit, type AuditAction, type AuditResourceType } from '@/lib/audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:audit')
 
 /**
  * GET /api/audit
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccess({ logs, count: logs.length })
   } catch (error) {
-    console.error('Error fetching audit logs:', error)
+    log.error('Error fetching audit logs', error)
     return ApiErrors.database(error instanceof Error ? error.message : 'Failed to fetch audit logs')
   }
 }

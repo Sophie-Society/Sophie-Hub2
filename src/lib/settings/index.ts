@@ -1,4 +1,4 @@
-import { getAdminClient } from '@/lib/supabase/admin'
+import { findSystemSetting } from '@/lib/repositories/settings.repository'
 import { decrypt } from '@/lib/encryption'
 import { createLogger } from '@/lib/logger'
 
@@ -11,38 +11,23 @@ const log = createLogger('settings')
  */
 export async function getSystemSetting(key: string): Promise<string | null> {
   try {
-    const supabase = getAdminClient()
+    const row = await findSystemSetting(key)
 
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('value, encrypted')
-      .eq('key', key)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Not found
-        return null
-      }
-      log.error(`Failed to fetch setting ${key}`, error)
-      return null
-    }
-
-    if (!data?.value) {
+    if (!row?.value) {
       return null
     }
 
     // Decrypt if encrypted
-    if (data.encrypted) {
+    if (row.encrypted) {
       try {
-        return decrypt(data.value)
+        return decrypt(row.value)
       } catch (decryptError) {
         log.error(`Failed to decrypt setting ${key}`, decryptError)
         return null
       }
     }
 
-    return data.value
+    return row.value
   } catch (error) {
     log.error(`Error fetching setting ${key}`, error)
     return null

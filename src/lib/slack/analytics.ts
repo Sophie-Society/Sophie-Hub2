@@ -13,6 +13,9 @@
  */
 
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('lib:slack:analytics')
+
 import type {
   AnalyticsMessage,
   ComputeResult,
@@ -319,12 +322,12 @@ export async function computeAllChannels(options: {
           error: errorMessage,
         })
         // Continue processing other channels/dates
-        console.error(`Analytics error for ${channel.channel_id} on ${date}: ${errorMessage}`)
+        log.error(`Analytics error for ${channel.channel_id} on ${date}: ${errorMessage}`)
       }
     }
   }
 
-  console.log(
+  log.info(
     `Analytics computation complete: ${computed} computed, ${failed} failed, ` +
     `${channels.length} channels, ${dates.length} dates`
   )
@@ -346,7 +349,7 @@ export async function computeDailyRollingWindow(): Promise<{
   const dateFrom = addDays(todayStr, -LOOKAHEAD_DAYS)
   const dateTo = addDays(todayStr, -1)
 
-  console.log(`Daily analytics: computing ${dateFrom} to ${dateTo} (rolling ${LOOKAHEAD_DAYS}-day window)`)
+  log.info(`Daily analytics: computing ${dateFrom} to ${dateTo} (rolling ${LOOKAHEAD_DAYS}-day window)`)
 
   return computeAllChannels({ dateFrom, dateTo })
 }

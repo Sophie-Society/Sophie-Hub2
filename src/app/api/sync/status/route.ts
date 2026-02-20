@@ -1,6 +1,9 @@
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sync:status')
 
 const supabase = getAdminClient()
 
@@ -22,7 +25,7 @@ export async function GET() {
       .eq('status', 'running')
 
     if (error) {
-      console.error('Error checking sync status:', error)
+      log.error('Error checking sync status', error)
       return ApiErrors.database(error.message)
     }
 
@@ -32,7 +35,7 @@ export async function GET() {
       'Cache-Control': 'no-store',
     })
   } catch (error) {
-    console.error('Error in GET /api/sync/status:', error)
+    log.error('Error in GET /api/sync/status', error)
     return ApiErrors.internal()
   }
 }

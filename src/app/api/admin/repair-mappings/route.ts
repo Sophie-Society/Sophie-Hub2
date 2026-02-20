@@ -5,6 +5,10 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { getSheetRawRows } from '@/lib/google/sheets'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
+import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:repair-mappings')
 
 const supabase = getAdminClient()
 
@@ -35,12 +39,23 @@ export async function POST() {
   }
 
   try {
-    // Get the user's Google access token
+    // Resolve Google Sheets token (shared connector token when configured,
+    // otherwise falls back to the current viewer token).
     const session = await getServerSession(authOptions)
-    const accessToken = session?.accessToken as string | undefined
+    if (!session?.user?.email) {
+      return ApiErrors.unauthorized('Not authenticated')
+    }
 
-    if (!accessToken) {
-      return ApiErrors.unauthorized('Google access token required - please sign in again')
+    let accessToken: string
+    try {
+      const resolved = await resolveSheetsAccessToken(session.accessToken)
+      accessToken = resolved.accessToken
+    } catch (authError) {
+      const mapped = mapSheetsAuthError(authError)
+      if (mapped.status === 401) {
+        return ApiErrors.unauthorized(mapped.message)
+      }
+      return ApiErrors.internal(mapped.message)
     }
 
     // Find all column_mappings with empty or null source_column
@@ -66,7 +81,7 @@ export async function POST() {
       .or('source_column.is.null,source_column.eq.')
 
     if (fetchError) {
-      console.error('Error fetching broken mappings:', fetchError)
+      log.error('Error fetching broken mappings', fetchError)
       return ApiErrors.database(fetchError.message)
     }
 
@@ -83,7 +98,7 @@ export async function POST() {
       })
     }
 
-    console.log(`[repair-mappings] Found ${brokenMappings.length} mappings with empty source_column`)
+    log.info(`[repair-mappings] Found ${brokenMappings.length} mappings with empty source_column`)
 
     // Group by tab_mapping to minimize sheet fetches
     const byTabMapping = new Map<string, typeof brokenMappings>()
@@ -108,7 +123,7 @@ export async function POST() {
       } | null
 
       if (!tabMapping?.data_source?.spreadsheet_id) {
-        console.log(`[repair-mappings] Skipping tab ${tabMappingId} - no spreadsheet_id`)
+        log.info(`[repair-mappings] Skipping tab ${tabMappingId} - no spreadsheet_id`)
         results.push({
           tabMappingId,
           tabName: tabMapping?.tab_name || 'Unknown',
@@ -124,7 +139,7 @@ export async function POST() {
       const tabName = tabMapping.tab_name
       const headerRow = tabMapping.header_row ?? 0
 
-      console.log(`[repair-mappings] Fetching headers for ${sheetName} / ${tabName}`)
+      log.info(`[repair-mappings] Fetching headers for ${sheetName} / ${tabName}`)
 
       try {
         // Fetch raw rows from the sheet (need enough rows to get to header row)
@@ -184,7 +199,7 @@ export async function POST() {
           details,
         })
       } catch (sheetError) {
-        console.error(`[repair-mappings] Error fetching sheet ${tabName}:`, sheetError)
+        log.error(`[repair-mappings] Error fetching sheet ${tabName}`, sheetError)
         results.push({
           tabMappingId,
           tabName,
@@ -203,7 +218,7 @@ export async function POST() {
       results,
     })
   } catch (error) {
-    console.error('[repair-mappings] Error:', error)
+    log.error('[repair-mappings] Error', error)
     return ApiErrors.internal()
   }
 }
@@ -246,7 +261,7 @@ export async function GET() {
       .or('tab_name.is.null,tab_name.eq.')
 
     if (tabError) {
-      console.error('Error checking tab_mappings:', tabError)
+      log.error('Error checking tab_mappings', tabError)
     }
 
     // Get total counts for context
@@ -287,7 +302,7 @@ export async function GET() {
       brokenTabs: brokenTabs?.map(t => ({ id: t.id, tab_name: t.tab_name })) || [],
     })
   } catch (error) {
-    console.error('[repair-mappings] GET error:', error)
+    log.error('[repair-mappings] GET error', error)
     return ApiErrors.internal()
   }
 }

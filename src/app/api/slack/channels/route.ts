@@ -10,6 +10,19 @@ import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { SLACK } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:channels')
+
+type SlackChannelType = 'partner_facing' | 'alerts' | 'internal'
+
+function detectChannelType(channelName: string): SlackChannelType {
+  const lower = channelName.toLowerCase()
+  if (SLACK.PARTNER_CHANNEL_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return 'alerts'
+  if (SLACK.PARTNER_CHANNEL_INTERNAL_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return 'internal'
+  return 'partner_facing'
+}
 
 export async function GET() {
   const auth = await requireRole(ROLES.ADMIN)
@@ -62,6 +75,9 @@ export async function GET() {
         purpose: ch.purpose?.value || '',
         partner_id: mapping?.partner_id || null,
         partner_name: mapping ? partnerNames[mapping.partner_id] || null : null,
+        channel_type:
+          ((mapping?.metadata as Record<string, unknown> | undefined)?.channel_type as SlackChannelType | undefined) ||
+          detectChannelType(ch.name),
         is_mapped: !!mapping,
       }
     })
@@ -80,7 +96,7 @@ export async function GET() {
 
     return response
   } catch (error) {
-    console.error('Failed to fetch Slack channels:', error)
+    log.error('Failed to fetch Slack channels', error)
     return ApiErrors.internal()
   }
 }

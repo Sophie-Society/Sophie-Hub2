@@ -1,3 +1,5 @@
+import { createLogger } from '@/lib/logger'
+const log = createLogger('lib:slack:client')
 /**
  * Slack API Client
  *
@@ -12,7 +14,12 @@
  * We enforce a minimum delay between calls to stay under limits.
  */
 
-import type { SlackUser, SlackChannel, SlackMessageMeta } from './types'
+import type {
+  SlackUser,
+  SlackChannel,
+  SlackMessageMeta,
+  SlackMessageWithText,
+} from './types'
 
 // =============================================================================
 // Configuration
@@ -68,8 +75,7 @@ interface SlackApiResponse {
   response_metadata?: {
     next_cursor?: string
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any
+  [key: string]: unknown
 }
 
 /**
@@ -91,7 +97,7 @@ async function fetchWithRetry(
       const backoffMs = retryAfter && !isNaN(retryAfter)
         ? retryAfter * 1000
         : MIN_DELAY_MS * Math.pow(2, attempt + 1) // exponential backoff
-      console.warn(`Slack 429: retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
+      log.warn(`Slack 429: retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
       await new Promise(resolve => setTimeout(resolve, backoffMs))
       continue
     }
@@ -244,6 +250,13 @@ export interface ChannelHistoryPage {
   next_cursor?: string
 }
 
+/** Result from a single page of channel history (includes text) */
+export interface ChannelHistoryPageWithText {
+  messages: SlackMessageWithText[]
+  has_more: boolean
+  next_cursor?: string
+}
+
 /**
  * Get a single page of message history for a channel.
  * Returns message metadata only — NOT content.
@@ -349,4 +362,107 @@ export async function getChannelMembers(channelId: string): Promise<string[]> {
  */
 export async function joinChannel(channelId: string): Promise<void> {
   await slackApiPost('conversations.join', { channel: channelId })
+}
+
+/**
+ * Get a single page of message history including message text.
+ * Used by automation workflows that need to interpret channel updates.
+ */
+export async function getChannelHistoryPageWithText(
+  channelId: string,
+  options?: {
+    oldest?: string
+    latest?: string
+    cursor?: string
+    limit?: number
+  }
+): Promise<ChannelHistoryPageWithText> {
+  const params: Record<string, string | number> = {
+    channel: channelId,
+    limit: options?.limit || PAGE_SIZE,
+  }
+  if (options?.oldest) params.oldest = options.oldest
+  if (options?.latest) params.latest = options.latest
+  if (options?.cursor) params.cursor = options.cursor
+
+  const data = await slackApi('conversations.history', params)
+  const rawMessages = (data.messages || []) as SlackMessageWithText[]
+
+  const messages: SlackMessageWithText[] = rawMessages.map(msg => ({
+    ts: msg.ts,
+    thread_ts: msg.thread_ts,
+    user: msg.user,
+    bot_id: msg.bot_id,
+    type: msg.type,
+    subtype: msg.subtype,
+    text: msg.text,
+  }))
+
+  return {
+    messages,
+    has_more: !!data.has_more,
+    next_cursor: data.response_metadata?.next_cursor || undefined,
+  }
+}
+
+/**
+ * Get message history since a timestamp (exclusive), including message text.
+ * Returns newest-first data sorted into chronological order for processing.
+ */
+export async function getChannelHistorySinceWithText(
+  channelId: string,
+  oldest: string,
+  limit = 1000
+): Promise<SlackMessageWithText[]> {
+  const allMessages: SlackMessageWithText[] = []
+  let cursor: string | undefined
+
+  do {
+    const page = await getChannelHistoryPageWithText(channelId, {
+      oldest,
+      cursor,
+      limit: Math.min(PAGE_SIZE, limit - allMessages.length),
+    })
+
+    allMessages.push(...page.messages)
+    cursor = page.next_cursor
+  } while (cursor && allMessages.length < limit)
+
+  return allMessages.sort((a, b) => parseFloat(a.ts) - parseFloat(b.ts))
+}
+
+/**
+ * Resolve a permalink to a Slack message.
+ */
+export async function getMessagePermalink(
+  channelId: string,
+  messageTs: string
+): Promise<string | null> {
+  const data = await slackApi('chat.getPermalink', {
+    channel: channelId,
+    message_ts: messageTs,
+  })
+
+  const permalink = data.permalink
+  return typeof permalink === 'string' ? permalink : null
+}
+
+/**
+ * Post a plain text message to a Slack channel.
+ */
+export async function postChannelMessage(
+  channelId: string,
+  text: string
+): Promise<{ ts: string }> {
+  const data = await slackApiPost('chat.postMessage', {
+    channel: channelId,
+    text,
+    mrkdwn: true,
+  })
+
+  if (typeof data.ts !== 'string') {
+    throw new Error('Slack API returned no message timestamp')
+  }
+
+  return { ts: data.ts }
 }

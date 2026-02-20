@@ -2,6 +2,9 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sync:runs')
 
 const supabase = getAdminClient()
 
@@ -106,7 +109,7 @@ export async function GET(request: Request) {
     const { data: runs, error, count } = await query
 
     if (error) {
-      console.error('Error fetching sync runs:', error)
+      log.error('Error fetching sync runs', error)
       return ApiErrors.database(error.message)
     }
 
@@ -116,7 +119,7 @@ export async function GET(request: Request) {
       has_more: (count || 0) > offset + limit,
     })
   } catch (error) {
-    console.error('Error in GET /api/sync/runs:', error)
+    log.error('Error in GET /api/sync/runs', error)
     return ApiErrors.internal()
   }
 }
