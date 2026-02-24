@@ -1,13 +1,17 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, apiError, ApiErrors } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:tab-mappings:draft')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
 
 // GET - Load draft state for a tab (admin only)
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -30,7 +34,7 @@ export async function GET(request: Request) {
 
     if (error && error.code !== 'PGRST116') {
       // PGRST116 is "not found" which is OK
-      console.error('Error loading draft:', error)
+      log.error('Error loading draft', error)
       return ApiErrors.database(error.message)
     }
 
@@ -44,13 +48,13 @@ export async function GET(request: Request) {
       updatedAt: tabMapping.draft_updated_at,
     })
   } catch (error) {
-    console.error('Error in GET /api/tab-mappings/draft:', error)
+    log.error('Error in GET /api/tab-mappings/draft', error)
     return ApiErrors.internal()
   }
 }
 
 // POST - Save draft state for a tab (admin only)
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -105,13 +109,13 @@ export async function POST(request: Request) {
 
     return apiSuccess({ saved: true })
   } catch (error) {
-    console.error('Error in POST /api/tab-mappings/draft:', error)
+    log.error('Error in POST /api/tab-mappings/draft', error)
     return ApiErrors.internal()
   }
 }
 
 // DELETE - Clear draft state for a tab (admin only)
-export async function DELETE(request: Request) {
+export async function DELETE(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -142,7 +146,7 @@ export async function DELETE(request: Request) {
 
     return apiSuccess({ cleared: true })
   } catch (error) {
-    console.error('Error in DELETE /api/tab-mappings/draft:', error)
+    log.error('Error in DELETE /api/tab-mappings/draft', error)
     return ApiErrors.internal()
   }
 }

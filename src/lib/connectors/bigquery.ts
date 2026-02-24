@@ -16,6 +16,9 @@
 
 import { BigQuery } from '@google-cloud/bigquery'
 import { BaseConnector } from './base'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('lib:connectors:bigquery')
+
 import type {
   BigQueryConnectorConfig,
   ConnectorMetadata,
@@ -161,7 +164,7 @@ export class BigQueryConnector extends BaseConnector<BigQueryConnectorConfig> {
 
       return tabs
     } catch (error) {
-      console.error('BigQuery getTabs error:', error)
+      log.error('BigQuery getTabs error', error)
       throw new Error(
         `Failed to list BigQuery views: ${error instanceof Error ? error.message : 'Unknown error'}`
       )
@@ -215,7 +218,7 @@ export class BigQueryConnector extends BaseConnector<BigQueryConnectorConfig> {
         totalRows,
       }
     } catch (error) {
-      console.error('BigQuery getRawRows error:', error)
+      log.error('BigQuery getRawRows error', error)
       throw new Error(
         `Failed to fetch BigQuery data: ${error instanceof Error ? error.message : 'Unknown error'}`
       )
@@ -300,7 +303,7 @@ export class BigQueryConnector extends BaseConnector<BigQueryConnectorConfig> {
 
       return { headers, rows: dataRows }
     } catch (error) {
-      console.error('BigQuery getPartnerData error:', error)
+      log.error('BigQuery getPartnerData error', error)
       throw new Error(
         `Failed to fetch partner data: ${error instanceof Error ? error.message : 'Unknown error'}`
       )
@@ -330,7 +333,7 @@ export class BigQueryConnector extends BaseConnector<BigQueryConnectorConfig> {
       const [rows] = await client.query(query)
       return rows.map((row) => String(row[partnerField]))
     } catch (error) {
-      console.error('BigQuery getClientNames error:', error)
+      log.error('BigQuery getClientNames error', error)
       throw new Error(
         `Failed to fetch client names: ${error instanceof Error ? error.message : 'Unknown error'}`
       )

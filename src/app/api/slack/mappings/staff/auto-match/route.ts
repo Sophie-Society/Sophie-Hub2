@@ -5,6 +5,7 @@
  * Updates entity_external_ids and staff.slack_id.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -12,8 +13,11 @@ import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateUsersCache } from '@/lib/connectors/slack-cache'
 import { bulkReclassifyStaffMessages } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
 
-export async function POST() {
+const log = createLogger('api:slack:mappings:staff:auto-match')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -39,7 +43,7 @@ export async function POST() {
       .not('email', 'is', null)
 
     if (staffError) {
-      console.error('Failed to fetch staff:', staffError)
+      log.error('Failed to fetch staff', staffError)
       return ApiErrors.database()
     }
 
@@ -103,16 +107,23 @@ export async function POST() {
           .upsert(batch, { onConflict: 'source,external_id' })
 
         if (error) {
-          console.error(`Batch ${i / BATCH_SIZE + 1} failed:`, error)
+          log.error(`Batch ${i / BATCH_SIZE + 1} failed`, error)
         }
       }
 
-      // Also update staff.slack_id for all matches
-      for (const m of matches) {
-        await supabase
-          .from('staff')
-          .update({ slack_id: m.slack_user_id })
-          .eq('id', m.staff_id)
+      // Update staff.slack_id for all matches — each row needs a different value,
+      // so parallelize in batches of 50 (each staff member gets a unique slack_id)
+      const SLACK_UPDATE_BATCH = 50
+      for (let i = 0; i < matches.length; i += SLACK_UPDATE_BATCH) {
+        const batch = matches.slice(i, i + SLACK_UPDATE_BATCH)
+        await Promise.all(
+          batch.map(m =>
+            supabase
+              .from('staff')
+              .update({ slack_id: m.slack_user_id })
+              .eq('id', m.staff_id)
+          )
+        )
       }
     }
 
@@ -147,7 +158,7 @@ export async function POST() {
       unmatched_slack_users: unmatchedSlackUsers,
     })
   } catch (error) {
-    console.error('Staff auto-match error:', error)
+    log.error('Staff auto-match error', error)
     return ApiErrors.internal()
   }
 }

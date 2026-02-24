@@ -13,7 +13,7 @@ interface SessionUser {
  * Returns the current authenticated user's info
  * Used for debugging auth and role assignment
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
 
   if (!auth.authenticated) {

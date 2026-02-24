@@ -2,8 +2,38 @@ import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { STATUS_BUCKETS } from '@/lib/status-colors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:stats:tables')
 
 const supabase = getAdminClient()
+const PARTNER_PAGE_SIZE = 1000
+
+type PartnerStatsRow = {
+  id: string
+  source_data: Record<string, Record<string, Record<string, unknown>>> | null
+}
+
+async function fetchAllPartnersForStats(): Promise<PartnerStatsRow[]> {
+  const partners: PartnerStatsRow[] = []
+
+  for (let offset = 0; ; offset += PARTNER_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('partners')
+      .select('id, source_data')
+      .order('id', { ascending: true })
+      .range(offset, offset + PARTNER_PAGE_SIZE - 1)
+
+    if (error) throw error
+    if (!data || data.length === 0) break
+
+    partners.push(...(data as PartnerStatsRow[]))
+
+    if (data.length < PARTNER_PAGE_SIZE) break
+  }
+
+  return partners
+}
 
 /**
  * Get the latest weekly status from partner source_data
@@ -66,26 +96,29 @@ function isActiveStatus(status: string | null): boolean {
   return false
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   try {
-    // Get all partners with source_data to calculate active count
-    // Note: Supabase defaults to 1000 rows, explicitly set higher limit
+    // Fetch all partners page-by-page to avoid API max row caps (often 1000/request).
     const [partnersResult, staffResult] = await Promise.all([
-      supabase.from('partners').select('id, source_data').limit(5000),
-      supabase.from('staff').select('*', { count: 'exact', head: true }),
+      fetchAllPartnersForStats(),
+      supabase.from('staff').select('id', { count: 'exact', head: true }),
     ])
+
+    if (staffResult.error) {
+      log.error('Error counting staff', staffResult.error)
+    }
 
     // Calculate active partners (healthy, onboarding, at risk, offboarding - excludes churned/paused)
     let totalPartners = 0
     let activePartners = 0
 
-    if (partnersResult.data) {
-      totalPartners = partnersResult.data.length
+    if (partnersResult.length > 0) {
+      totalPartners = partnersResult.length
 
-      for (const partner of partnersResult.data) {
+      for (const partner of partnersResult) {
         const sourceData = partner.source_data as Record<string, Record<string, Record<string, unknown>>> | null
         const latestStatus = getLatestWeeklyStatus(sourceData)
 
@@ -119,7 +152,7 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error('Error fetching table stats:', error)
+    log.error('Error fetching table stats', error)
     return NextResponse.json(
       { error: 'Failed to fetch stats' },
       { status: 500 }

@@ -22,13 +22,16 @@ import type { GoogleDirectoryUser } from '@/lib/google-workspace/types'
 import type { DirectoryDriftEvent } from '@/lib/google-workspace/types'
 import { refreshGoogleWorkspaceStaffApprovalQueue } from '@/lib/google-workspace/staff-approval-queue'
 import { SYNC } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:google-workspace:sync')
 
 function isSnapshotSchemaError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -68,11 +71,10 @@ export async function POST() {
         includeDeleted: false, // Google's deleted-user API has a 20-day window; we handle tombstones locally
       })
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Directory pull failed'
-      console.error('Directory sync: API pull failed:', msg)
+      logger.error('Directory sync: API pull failed', error)
       return apiSuccess({
         success: false,
-        error: `Directory pull failed: ${msg}. No changes applied.`,
+        error: 'Directory pull failed. Check Google Workspace credentials and try again. No changes applied.',
         tombstoned: 0,
       })
     }
@@ -90,7 +92,7 @@ export async function POST() {
           tombstoned: 0,
         })
       }
-      console.error('Directory sync: failed to read existing snapshot:', existingSnapshotError)
+      logger.error('Directory sync: failed to read existing snapshot', existingSnapshotError)
       return ApiErrors.database()
     }
 
@@ -191,27 +193,35 @@ export async function POST() {
             tombstoned: 0,
           })
         }
-        console.error(`Batch upsert failed (offset ${i}):`, error)
+        logger.error(`Batch upsert failed (offset ${i})`, error)
       } else {
         upserted += batch.length
       }
     }
 
     // 5. Tombstone users NOT in this pull (safe: full pull completed successfully)
-    let tombstoned = 0
+    // Collect all IDs to tombstone first, then batch update in one query
+    const toTombstone: Array<{ googleId: string; email: string }> = []
     for (const [googleId, existing] of Array.from(existingByGoogleId.entries())) {
       if (!pulledGoogleIds.has(googleId) && !existing.is_deleted) {
-        const { error } = await supabase
-          .from('google_workspace_directory_snapshot')
-          .update({ is_deleted: true, updated_at: now })
-          .eq('google_user_id', googleId)
+        toTombstone.push({ googleId, email: existing.primary_email })
+      }
+    }
 
-        if (!error) {
-          tombstoned++
+    let tombstoned = 0
+    if (toTombstone.length > 0) {
+      const { error } = await supabase
+        .from('google_workspace_directory_snapshot')
+        .update({ is_deleted: true, updated_at: now })
+        .in('google_user_id', toTombstone.map(t => t.googleId))
+
+      if (!error) {
+        tombstoned = toTombstone.length
+        for (const { googleId, email } of toTombstone) {
           driftEvents.push({
             type: 'user_deleted',
             google_user_id: googleId,
-            email: existing.primary_email,
+            email,
             name: '',
             details: 'No longer in directory pull',
           })
@@ -232,7 +242,7 @@ export async function POST() {
       completed_at: now,
     })
   } catch (error) {
-    console.error('Directory sync error:', error)
+    logger.error('Directory sync error', error)
     return ApiErrors.internal()
   }
 }

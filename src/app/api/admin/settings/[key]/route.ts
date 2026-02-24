@@ -1,9 +1,13 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { encrypt, decrypt, maskValue } from '@/lib/encryption'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:settings')
 
 interface RouteContext {
   params: Promise<{ key: string }>
@@ -13,7 +17,7 @@ interface RouteContext {
  * PUT /api/admin/settings/[key]
  * Update or create a system setting (admin only)
  */
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -42,7 +46,7 @@ export async function PUT(request: Request, context: RouteContext) {
     try {
       encryptedValue = encrypt(value)
     } catch (encryptError) {
-      console.error('Encryption failed:', encryptError)
+      log.error('Encryption failed', encryptError)
       return apiError(
         'ENCRYPTION_ERROR',
         'Encryption failed. Ensure ENCRYPTION_KEY is configured.',
@@ -70,7 +74,7 @@ export async function PUT(request: Request, context: RouteContext) {
       .single()
 
     if (error) {
-      console.error('Failed to save setting:', error)
+      log.error('Failed to save setting', error)
       return ApiErrors.database(error.message)
     }
 
@@ -80,7 +84,7 @@ export async function PUT(request: Request, context: RouteContext) {
       updated_at: data.updated_at,
     })
   } catch (error) {
-    console.error('Settings update error:', error)
+    log.error('Settings update error', error)
     return apiError('INTERNAL_ERROR', 'Failed to update setting', 500)
   }
 }
@@ -89,7 +93,7 @@ export async function PUT(request: Request, context: RouteContext) {
  * DELETE /api/admin/settings/[key]
  * Remove a system setting (admin only)
  */
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -107,19 +111,20 @@ export async function DELETE(request: Request, context: RouteContext) {
   try {
     const supabase = getAdminClient()
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('system_settings')
       .delete()
       .eq('key', key)
+      .select('key')
 
     if (error) {
-      console.error('Failed to delete setting:', error)
+      log.error('Failed to delete setting', error)
       return ApiErrors.database(error.message)
     }
 
-    return apiSuccess({ deleted: true })
+    return apiSuccess({ deleted: true, key: data?.[0]?.key ?? key })
   } catch (error) {
-    console.error('Settings delete error:', error)
+    log.error('Settings delete error', error)
     return apiError('INTERNAL_ERROR', 'Failed to delete setting', 500)
   }
 }
@@ -128,7 +133,7 @@ export async function DELETE(request: Request, context: RouteContext) {
  * GET /api/admin/settings/[key]
  * Get decrypted value for a specific setting (admin only, for internal use)
  */
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -151,7 +156,7 @@ export async function GET(request: Request, context: RouteContext) {
       if (error.code === 'PGRST116') {
         return ApiErrors.notFound('Setting')
       }
-      console.error('Failed to fetch setting:', error)
+      log.error('Failed to fetch setting', error)
       return ApiErrors.database(error.message)
     }
 
@@ -161,7 +166,7 @@ export async function GET(request: Request, context: RouteContext) {
       try {
         decryptedValue = decrypt(data.value)
       } catch (decryptError) {
-        console.error('Decryption failed:', decryptError)
+        log.error('Decryption failed', decryptError)
         return apiError('DECRYPTION_ERROR', 'Failed to decrypt setting', 500)
       }
     }
@@ -173,7 +178,7 @@ export async function GET(request: Request, context: RouteContext) {
       updated_at: data.updated_at,
     })
   } catch (error) {
-    console.error('Settings fetch error:', error)
+    log.error('Settings fetch error', error)
     return apiError('INTERNAL_ERROR', 'Failed to fetch setting', 500)
   }
 }

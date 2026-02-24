@@ -1,6 +1,10 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sync:runs')
 
 const supabase = getAdminClient()
 
@@ -20,7 +24,7 @@ const supabase = getAdminClient()
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -61,13 +65,13 @@ export async function GET(
       if (error.code === 'PGRST116') {
         return ApiErrors.notFound('Sync run')
       }
-      console.error('Error fetching sync run:', error)
+      log.error('Error fetching sync run', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ run })
   } catch (error) {
-    console.error('Error in GET /api/sync/runs/[id]:', error)
+    log.error('Error in GET /api/sync/runs/[id]', error)
     return ApiErrors.internal()
   }
 }

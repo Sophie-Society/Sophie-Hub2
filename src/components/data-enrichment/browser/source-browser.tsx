@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Loader2, Search, Table, ChevronUp, RefreshCw, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { createLogger } from '@/lib/logger'
 import { SourceTabBar } from './source-tab-bar'
 import { SheetTabBar, OVERVIEW_TAB_ID } from './sheet-tab-bar'
 import { SmartMapper } from '../smart-mapper'
@@ -64,6 +65,7 @@ interface SourceBrowserProps {
   onTabChange?: (tabId: string | null) => void
 }
 
+const log = createLogger('source-browser')
 const easeOut: [number, number, number, number] = [0.22, 1, 0.36, 1]
 
 export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceChange, onTabChange }: SourceBrowserProps) {
@@ -100,6 +102,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isAutoMatchingStaffByEmail, setIsAutoMatchingStaffByEmail] = useState(false)
   const [syncStatus, setSyncStatus] = useState<{
     lastSyncAt?: string | null
     lastSyncStatus?: 'completed' | 'failed' | null
@@ -170,7 +173,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         }
       }
     } catch (error) {
-      console.error('Error loading preview:', error)
+      log.error('Error loading preview:', error)
     } finally {
       setIsLoadingPreview(false)
     }
@@ -235,7 +238,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         handleSourcesLoaded(fetchedSources)
       }
     } catch (error) {
-      console.error('Error fetching sources:', error)
+      log.error('Error fetching sources:', error)
     } finally {
       setIsLoading(false)
     }
@@ -426,14 +429,14 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         toast.error('Failed to update tab status')
       }
     } catch (error) {
-      console.error('Error updating tab status:', error)
+      log.error('Error updating tab status:', error)
       toast.error('Failed to update tab status')
     }
   }
 
   // Handle sync: directly sync to database (no dry run preview)
   const handleSync = useCallback(async () => {
-    if (!activeSource?.id || isSyncing || syncProgress.isRunning) return
+    if (!activeSource?.id || isSyncing || syncProgress.isRunning || isAutoMatchingStaffByEmail) return
 
     // Only sync tabs that have column mappings (columnCount > 0 means they have saved mappings)
     const syncableTabs = activeSource.tabs?.filter(
@@ -518,7 +521,70 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         description: `${totalCreated} created, ${totalUpdated} updated`,
       })
     }
-  }, [activeSource, isSyncing, syncProgress.isRunning])
+  }, [activeSource, isSyncing, syncProgress.isRunning, isAutoMatchingStaffByEmail])
+
+  const handleAutoMatchStaffByEmail = useCallback(async () => {
+    if (!activeSource?.id || isAutoMatchingStaffByEmail || isSyncing || syncProgress.isRunning) return
+
+    setIsAutoMatchingStaffByEmail(true)
+    try {
+      const response = await fetch(`/api/sync/source/${activeSource.id}/staff-auto-match`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ create_unmatched_contractors: true }),
+      })
+
+      const json = await response.json().catch(() => null) as {
+        success?: boolean
+        data?: {
+          matched?: number
+          skipped?: number
+          tabs_synced?: number
+          tabs_with_email_key?: number
+          contractors_created?: number
+          message?: string
+        }
+        error?: { message?: string }
+      } | null
+
+      if (!response.ok || !json?.success || !json.data) {
+        toast.error('Staff auto-match failed', {
+          description: json?.error?.message || 'Unable to auto-match staff for this source.',
+        })
+        return
+      }
+
+      const matched = json.data.matched || 0
+      const skipped = json.data.skipped || 0
+      const tabsSynced = json.data.tabs_synced || 0
+      const tabsWithEmailKey = json.data.tabs_with_email_key || 0
+      const contractorsCreated = json.data.contractors_created || 0
+
+      if (matched > 0 || contractorsCreated > 0) {
+        toast.success('Staff auto-match complete', {
+          description: `${matched} matched · ${contractorsCreated} contractors created · ${skipped} skipped · ${tabsSynced}/${tabsWithEmailKey} tabs processed`,
+        })
+      } else {
+        toast.info('Auto-match complete', {
+          description: json.data.message || `No existing staff emails matched. ${skipped} rows skipped.`,
+        })
+      }
+
+      // Refresh sources after auto-match so overview cards and sync metadata stay fresh.
+      const sourcesResponse = await fetch('/api/data-sources', { cache: 'no-store' })
+      if (sourcesResponse.ok) {
+        const payload = await sourcesResponse.json()
+        const freshSources = payload.data?.sources || payload.sources || []
+        setSources(freshSources)
+        setCachedSources(freshSources as CachedDataSource[])
+      }
+    } catch (error) {
+      log.error('Error running staff auto-match:', error)
+      toast.error('Staff auto-match failed')
+    } finally {
+      setIsAutoMatchingStaffByEmail(false)
+    }
+  }, [activeSource?.id, isAutoMatchingStaffByEmail, isSyncing, syncProgress.isRunning])
 
   // Auto-trigger sync preview after mapping save completes and sources refresh
   useEffect(() => {
@@ -544,7 +610,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
           // If no syncs running but UI shows running, the sync completed
           // and we missed the response - reset the UI
           if (runningCount === 0 && syncProgress.isRunning) {
-            console.log('[SyncPolling] Detected sync completion via polling - resetting UI')
+            log.info('[SyncPolling] Detected sync completion via polling - resetting UI')
             setSyncProgress({ isRunning: false, completedTabs: 0, totalTabs: 0, phase: 'idle' })
             toast.success('Sync complete', {
               description: 'Data has been synced to the database',
@@ -623,7 +689,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         })
       }
     } catch (error) {
-      console.error('Sync error:', error)
+      log.error('Sync error:', error)
       setSyncStatus({
         lastSyncAt: new Date().toISOString(),
         lastSyncStatus: 'failed',
@@ -669,7 +735,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         sourceId = data.source.id
       } else {
         const errorData = await createResponse.json()
-        console.error('Failed to create data source:', errorData)
+        log.error('Failed to create data source:', errorData)
         setIsLoadingPreview(false)
         return
       }
@@ -718,10 +784,10 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         }
       } else {
         const errorData = await previewResponse.json()
-        console.error('Failed to fetch preview:', errorData)
+        log.error('Failed to fetch preview:', errorData)
       }
     } catch (error) {
-      console.error('Error adding source:', error)
+      log.error('Error adding source:', error)
     } finally {
       setIsLoadingPreview(false)
     }
@@ -793,7 +859,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
     primaryEntity: 'partners' | 'staff' | 'asins'
   }) => {
     if (!activeSource || !activeTab) {
-      console.error('No active source or tab')
+      log.error('No active source or tab')
       return
     }
 
@@ -879,12 +945,12 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
         // via the onNavigateAfterSave callback (SmartMapper's onBack prop)
       } else {
         const error = await response.json()
-        console.error('Failed to save mappings:', error)
+        log.error('Failed to save mappings:', error)
         toast.error('Failed to save mappings')
         throw new Error('Save failed')
       }
     } catch (error) {
-      console.error('Error saving mappings:', error)
+      log.error('Error saving mappings:', error)
       if (!(error instanceof Error && error.message === 'Save failed')) {
         toast.error('Error saving mappings')
       }
@@ -1053,7 +1119,7 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
               body: JSON.stringify({ sourceIds: reorderedSources.map(s => s.id) }),
             })
           } catch (error) {
-            console.error('Failed to persist source order:', error)
+            log.error('Failed to persist source order:', error)
           }
         }}
       />
@@ -1200,6 +1266,8 @@ export function SourceBrowser({ onBack, initialSourceId, initialTabId, onSourceC
               isSyncing={isSyncing}
               syncProgress={syncProgress}
               syncStatus={syncStatus}
+              onAutoMatchStaffByEmail={handleAutoMatchStaffByEmail}
+              isAutoMatchingStaffByEmail={isAutoMatchingStaffByEmail}
               isLoadingPreview={isLoadingPreview}
             />
           </motion.div>

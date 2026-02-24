@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { LoadMappingResponse } from '@/types/enrichment'
+import { createLogger } from '@/lib/logger'
+
+const logger = createLogger('api:mappings:load')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
 
 // GET - Load field mappings (admin only)
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -23,7 +26,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Find the data source
+    // Find the data source — select('*') intentional: all columns spread into LoadMappingResponse.dataSource
     let query = supabase.from('data_sources').select('*')
 
     if (dataSourceId) {
@@ -42,6 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Load tab mappings with their column mappings and patterns
+    // select('*') intentional: all columns spread into LoadMappingResponse.tabMappings via ...tab
     const { data: tabMappings, error: tabError } = await supabase
       .from('tab_mappings')
       .select('*')
@@ -56,11 +60,13 @@ export async function GET(request: NextRequest) {
 
     const [allMappingsResult, allPatternsResult] = tabIds.length > 0
       ? await Promise.all([
+          // select('*') intentional: all columns spread into LoadMappingResponse columnMappings arrays
           supabase
             .from('column_mappings')
             .select('*')
             .in('tab_mapping_id', tabIds)
             .order('source_column_index'),
+          // select('*') intentional: all columns spread into LoadMappingResponse patterns arrays
           supabase
             .from('column_patterns')
             .select('*')
@@ -71,17 +77,17 @@ export async function GET(request: NextRequest) {
       : [{ data: [] }, { data: [] }]
 
     // Build O(1) lookup maps
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mappingsByTab = new Map<string, any[]>()
-    for (const m of allMappingsResult.data || []) {
+    const mappingRows = allMappingsResult.data || []
+    const mappingsByTab = new Map<string, typeof mappingRows>()
+    for (const m of mappingRows) {
       const list = mappingsByTab.get(m.tab_mapping_id)
       if (list) list.push(m)
       else mappingsByTab.set(m.tab_mapping_id, [m])
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const patternsByTab = new Map<string, any[]>()
-    for (const p of allPatternsResult.data || []) {
+    const patternRows = allPatternsResult.data || []
+    const patternsByTab = new Map<string, typeof patternRows>()
+    for (const p of patternRows) {
       const list = patternsByTab.get(p.tab_mapping_id)
       if (list) list.push(p)
       else patternsByTab.set(p.tab_mapping_id, [p])
@@ -102,9 +108,9 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
     })
   } catch (error) {
-    console.error('Error loading mapping:', error)
+    logger.error('Error loading mapping', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to load mapping' },
       { status: 500 }
     )
   }

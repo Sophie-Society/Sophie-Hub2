@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -7,13 +7,16 @@ import { SaveMappingSchemaV2 } from '@/lib/validations/schemas'
 import { DEFAULT_WEEKLY_PATTERN } from '@/types/enrichment'
 import { getConnectorRegistry } from '@/lib/connectors'
 import { audit } from '@/lib/audit'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('mappings:save')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
 
 // POST - Save field mappings (admin only)
 // Supports both legacy format { spreadsheet_id } and new format { type, connection_config }
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -74,12 +77,13 @@ export async function POST(request: NextRequest) {
 
     // 1. Create or update data_source
     // Look up by spreadsheet_id for backward compatibility
+    // Cat-4: .maybeSingle() — no data_source may exist yet for this spreadsheet_id
     const { data: existingSource } = legacySpreadsheetId
       ? await supabase
           .from('data_sources')
           .select('id')
           .eq('spreadsheet_id', legacySpreadsheetId)
-          .single()
+          .maybeSingle()
       : { data: null }
 
     let dataSourceId: string
@@ -121,12 +125,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Create or update tab_mapping
+    // Cat-4: .maybeSingle() — tab_mapping may not exist yet for this data_source + tab combination
     const { data: existingTab } = await supabase
       .from('tab_mappings')
       .select('id')
       .eq('data_source_id', dataSourceId)
       .eq('tab_name', tabMapping.tab_name)
-      .single()
+      .maybeSingle()
 
     let tabMappingId: string
 
@@ -148,15 +153,28 @@ export async function POST(request: NextRequest) {
       tabMappingId = data.id
 
       // Delete existing column mappings and patterns for this tab
-      await supabase
+      // H-6: destructure and check error; H-7: .select('id') returns deleted rows
+      const { error: deleteMappingsError } = await supabase
         .from('column_mappings')
         .delete()
         .eq('tab_mapping_id', tabMappingId)
+        .select('id')
 
-      await supabase
+      if (deleteMappingsError) {
+        log.error('Failed to delete existing column mappings', { err: deleteMappingsError, tabMappingId })
+        throw deleteMappingsError
+      }
+
+      const { error: deletePatternsError } = await supabase
         .from('column_patterns')
         .delete()
         .eq('tab_mapping_id', tabMappingId)
+        .select('id')
+
+      if (deletePatternsError) {
+        log.error('Failed to delete existing column patterns', { err: deletePatternsError, tabMappingId })
+        throw deletePatternsError
+      }
     } else {
       // Create new
       const { data, error } = await supabase
@@ -288,7 +306,7 @@ export async function POST(request: NextRequest) {
             .insert(tagInserts)
 
           if (tagError) {
-            console.error('Error saving column mapping tags:', tagError)
+            log.warn('Failed to save column mapping tags', { err: tagError, tabMappingId })
             // Don't fail the whole save for tags
           }
         }
@@ -339,7 +357,7 @@ export async function POST(request: NextRequest) {
           })
 
         if (error) {
-          console.error('Error saving computed field:', error)
+          log.warn('Failed to save computed field', { err: error, targetField: cf.target_field })
         } else {
           computedFieldsCount++
         }
@@ -370,7 +388,7 @@ export async function POST(request: NextRequest) {
       computed_fields_count: computedFieldsCount,
     })
   } catch (error) {
-    console.error('Error saving mapping:', error)
-    return ApiErrors.database(error instanceof Error ? error.message : 'Failed to save mapping')
+    log.error('Failed to save mapping', error)
+    return ApiErrors.database()
   }
 }

@@ -1,6 +1,10 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:sync:sources')
 
 const supabase = getAdminClient()
 
@@ -38,7 +42,7 @@ const ENTITY_LABELS: Record<string, string> = {
  * Returns syncable data grouped by ENTITY (partners, staff, asins).
  * Entity-first approach: users sync "Partner data", not "Master Client Sheet".
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -59,7 +63,7 @@ export async function GET() {
       .eq('is_active', true)
 
     if (tabError) {
-      console.error('Error fetching tab mappings:', tabError)
+      log.error('Error fetching tab mappings', tabError)
       return ApiErrors.database(tabError.message)
     }
 
@@ -77,7 +81,7 @@ export async function GET() {
       .eq('is_key', true)
 
     if (keyError) {
-      console.error('Error fetching key columns:', keyError)
+      log.error('Error fetching key columns', keyError)
       return ApiErrors.database(keyError.message)
     }
 
@@ -99,7 +103,7 @@ export async function GET() {
       .not('target_field', 'is', null)
 
     if (fieldError) {
-      console.error('Error fetching field counts:', fieldError)
+      log.error('Error fetching field counts', fieldError)
     }
 
     // Build field count map
@@ -117,7 +121,7 @@ export async function GET() {
       .order('started_at', { ascending: false })
 
     if (runsError) {
-      console.error('Error fetching sync runs:', runsError)
+      log.error('Error fetching sync runs', runsError)
     }
 
     // Build last sync map (most recent per tab)
@@ -210,7 +214,7 @@ export async function GET() {
 
     return apiSuccess({ entities })
   } catch (error) {
-    console.error('Error in GET /api/sync/sources:', error)
+    log.error('Error in GET /api/sync/sources', error)
     return ApiErrors.internal()
   }
 }

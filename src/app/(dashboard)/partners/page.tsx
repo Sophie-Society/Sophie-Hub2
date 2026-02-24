@@ -14,6 +14,7 @@ import { ShimmerGrid } from '@/components/ui/shimmer-grid'
 import { EntityListToolbar } from '@/components/entities/entity-list-toolbar'
 import { StatusBadge, ComputedStatusBadge } from '@/components/entities/status-badge'
 import { TierBadge } from '@/components/entities/tier-badge'
+import { ComputedPartnerTypeBadge } from '@/components/partners/computed-partner-type-badge'
 import { WeeklyStatusPreview } from '@/components/partners/weekly-status-preview'
 import { WeeklyStatusDialog } from '@/components/partners/weekly-status-dialog'
 import { StatusInvestigationDialog } from '@/components/partners/status-investigation-dialog'
@@ -78,6 +79,18 @@ interface Partner {
   latest_weekly_status?: string | null
   status_matches?: boolean
   weeks_without_data?: number
+  // Computed partner type fields from API
+  computed_partner_type?: string | null
+  computed_partner_type_label?: string
+  computed_partner_type_source?: 'staffing' | 'legacy_partner_type' | 'unknown'
+  staffing_partner_type?: string | null
+  staffing_partner_type_label?: string | null
+  legacy_partner_type_raw?: string | null
+  legacy_partner_type?: string | null
+  legacy_partner_type_label?: string | null
+  partner_type_matches?: boolean
+  partner_type_is_shared?: boolean
+  partner_type_reason?: string | null
   // BigQuery mapping
   has_bigquery?: boolean
   bigquery_client_name?: string | null
@@ -140,6 +153,28 @@ const CORE_COLUMNS: ColumnDef[] = [
     )
   },
   {
+    key: 'computed_partner_type_label',
+    label: 'Partner Type',
+    source: 'db',
+    sourceType: 'computed',
+    defaultVisible: true,
+    minWidth: 170,
+    flex: 0,
+    filterable: true,
+    filterType: 'enum',
+    render: (p) => (
+      <ComputedPartnerTypeBadge
+        computedLabel={p.computed_partner_type_label || 'Unknown'}
+        computedSource={p.computed_partner_type_source || 'unknown'}
+        legacyRaw={p.legacy_partner_type_raw}
+        legacyLabel={p.legacy_partner_type_label}
+        partnerTypeMatches={p.partner_type_matches ?? true}
+        isSharedPartner={p.partner_type_is_shared ?? false}
+        reason={p.partner_type_reason || null}
+      />
+    ),
+  },
+  {
     key: 'weekly',
     label: 'Weekly',
     source: 'db',
@@ -187,7 +222,7 @@ const CORE_COLUMNS: ColumnDef[] = [
   { key: 'client_phone', label: 'Phone', source: 'db', sourceType: 'sheet', defaultVisible: false, minWidth: 110, flex: 0 },
   {
     key: 'pod_leader_name',
-    label: 'Pod Leader',
+    label: 'PPC Strategist',
     source: 'db',
     sourceType: 'sheet',
     defaultVisible: true,
@@ -366,6 +401,9 @@ const sortOptions = [
   { value: 'tier', label: 'Tier', defaultOrder: 'asc' as const },
   { value: 'created_at', label: 'Date Added', defaultOrder: 'desc' as const },
 ]
+
+const PARTNER_BRAND_COL_WIDTH = 180
+const PARTNER_ACTION_COL_WIDTH = 52
 
 // Draggable column item with grip handle
 function DraggableColumnItem({
@@ -619,10 +657,11 @@ function ColumnFilterPopover({
   )
 }
 
-function PartnerRow({ partner, columns, visibleColumns, onSync, onWeeklyClick, onStatusClick }: {
+function PartnerRow({ partner, columns, visibleColumns, tableMinWidth, onSync, onWeeklyClick, onStatusClick }: {
   partner: Partner
   columns: ColumnDef[]
   visibleColumns: Set<string>
+  tableMinWidth: number
   onSync: (partnerId: string, brandName: string) => void
   onWeeklyClick: (partner: Partner) => void
   onStatusClick: (partner: Partner) => void
@@ -638,11 +677,15 @@ function PartnerRow({ partner, columns, visibleColumns, onSync, onWeeklyClick, o
   }
 
   return (
-    <div className="flex items-center py-3 hover:bg-muted/30 transition-colors group md:w-max rounded-lg md:rounded-none bg-transparent">
+    <div
+      className="flex items-center py-3 hover:bg-muted/30 transition-colors group md:min-w-full rounded-lg md:rounded-none bg-transparent"
+      style={{ minWidth: tableMinWidth }}
+    >
       {/* Brand name - sticky left on desktop, flex-fill on mobile */}
       <Link
         href={`/partners/${partner.id}`}
         className="md:sticky md:left-0 z-10 bg-card group-hover:bg-accent pl-5 pr-4 flex-1 md:flex-none min-w-0 md:min-w-[180px] md:w-[180px] md:shrink-0 cursor-pointer transition-colors"
+        style={{ width: PARTNER_BRAND_COL_WIDTH, minWidth: PARTNER_BRAND_COL_WIDTH }}
       >
         <span className="font-medium text-sm truncate block hover:text-primary transition-colors">
           {partner.brand_name}
@@ -717,8 +760,8 @@ function PartnerRow({ partner, columns, visibleColumns, onSync, onWeeklyClick, o
           flex: col.flex ?? 1,
         }
 
-        // Don't truncate status column - badges need to display fully
-        const shouldTruncate = col.key !== 'status'
+        // Don't truncate badge-style columns.
+        const shouldTruncate = col.key !== 'status' && col.key !== 'computed_partner_type_label'
 
         return (
           <div
@@ -738,7 +781,10 @@ function PartnerRow({ partner, columns, visibleColumns, onSync, onWeeklyClick, o
       </Link>
 
       {/* Row actions dropdown */}
-      <div className="hidden md:flex shrink-0 items-center px-3">
+      <div
+        className="hidden md:flex shrink-0 items-center justify-center px-2"
+        style={{ width: PARTNER_ACTION_COL_WIDTH, minWidth: PARTNER_ACTION_COL_WIDTH }}
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-muted">
@@ -978,6 +1024,13 @@ export default function PartnersPage() {
       .map(key => colMap.get(key))
       .filter((c): c is ColumnDef => c !== undefined)
   }, [allColumns, columnOrder])
+
+  const tableMinWidth = useMemo(() => {
+    const visibleColumnWidth = orderedColumns
+      .filter(col => visibleColumns.has(col.key))
+      .reduce((sum, col) => sum + (col.minWidth || 100), 0)
+    return PARTNER_BRAND_COL_WIDTH + visibleColumnWidth + PARTNER_ACTION_COL_WIDTH
+  }, [orderedColumns, visibleColumns])
 
   const toggleColumn = (key: string) => {
     setVisibleColumns(prev => {
@@ -1245,12 +1298,15 @@ export default function PartnersPage() {
           <>
             <div className={`rounded-xl border bg-card transition-opacity duration-150 ${isFiltering ? 'opacity-60' : ''}`}>
               {/* Sticky header - outside scroll container for proper vertical sticky */}
-              <div className="sticky top-[113px] z-20 bg-card border-b border-border/60 rounded-t-xl overflow-hidden">
+              <div className="sticky top-0 z-20 bg-card border-b border-border/60 rounded-t-xl overflow-hidden">
                 <div
                   ref={headerScrollRef}
                   className="overflow-hidden"
                 >
-                  <div className="hidden md:flex items-center py-2.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wider w-max">
+                  <div
+                    className="hidden md:flex items-center py-2.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wider md:min-w-full"
+                    style={{ minWidth: tableMinWidth }}
+                  >
                     {/* Brand header - sticky left, sortable */}
                     <button
                       onClick={() => {
@@ -1262,7 +1318,7 @@ export default function PartnersPage() {
                         }
                       }}
                       className="sticky left-0 z-10 bg-card pl-5 pr-4 shrink-0 flex items-center gap-1 hover:text-foreground transition-colors"
-                      style={{ width: 180, minWidth: 180, boxShadow: '2px 0 4px -2px rgba(0,0,0,0.08)' }}
+                      style={{ width: PARTNER_BRAND_COL_WIDTH, minWidth: PARTNER_BRAND_COL_WIDTH, boxShadow: '2px 0 4px -2px rgba(0,0,0,0.08)' }}
                     >
                       Brand
                       {sort === 'brand_name' && (
@@ -1339,7 +1395,10 @@ export default function PartnersPage() {
                       )
                     })}
                     {/* Column visibility toggle */}
-                    <div className="shrink-0 px-3">
+                    <div
+                      className="shrink-0 px-2 flex items-center justify-center"
+                      style={{ width: PARTNER_ACTION_COL_WIDTH, minWidth: PARTNER_ACTION_COL_WIDTH }}
+                    >
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-muted">
@@ -1379,13 +1438,14 @@ export default function PartnersPage() {
                 className="overflow-x-auto scrollbar-hide"
                 onScroll={handleContentScroll}
               >
-                <div className="divide-y divide-border/60 rounded-b-xl">
+                <div className="divide-y divide-border/60 rounded-b-xl md:min-w-full" style={{ minWidth: tableMinWidth }}>
                   {displayedPartners.map(partner => (
                     <PartnerRow
                       key={partner.id}
                       partner={partner}
                       columns={orderedColumns}
                       visibleColumns={visibleColumns}
+                      tableMinWidth={tableMinWidth}
                       onSync={handleSyncPartner}
                       onWeeklyClick={setWeeklyDialogPartner}
                       onStatusClick={setInvestigationDialogPartner}

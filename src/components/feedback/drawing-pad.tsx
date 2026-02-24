@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 
@@ -35,8 +36,7 @@ interface DrawingPadProps {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function DrawingPad({ open, onOpenChange, onSave, backgroundImage }: DrawingPadProps) {
   const { resolvedTheme } = useTheme()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null)
+  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null)
   const [exporting, setExporting] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -141,8 +141,7 @@ export function DrawingPad({ open, onOpenChange, onSave, backgroundImage }: Draw
           {open && mounted && (
             <Excalidraw
               key={excalidrawTheme} // Force re-render on theme change
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
+              excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
               theme={excalidrawTheme}
               initialData={{
                 appState: {

@@ -5,7 +5,7 @@
  * PATCH: Reorder sections (admin only)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -16,13 +16,14 @@ const supabase = getAdminClient()
 
 const CreateSectionSchema = z.object({
   title: z.string().min(1).max(200),
+  icon_emoji: z.string().max(16).optional().nullable(),
   sort_order: z.number().int().min(0).optional(),
 })
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -61,6 +62,7 @@ export async function POST(
       .insert({
         dashboard_id: dashboardId,
         title: validation.data.title,
+        icon_emoji: validation.data.icon_emoji ?? null,
         sort_order: sortOrder,
       })
       .select()
@@ -84,7 +86,7 @@ const ReorderSchema = z.object({
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

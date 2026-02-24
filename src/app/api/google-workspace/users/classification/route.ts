@@ -7,6 +7,7 @@
  * - shared_account -> force shared inbox/account
  */
 
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -14,6 +15,9 @@ import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateDirectoryUsersCache } from '@/lib/connectors/google-workspace-cache'
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:users:classification')
 
 const BodySchema = z.object({
   google_user_id: z.string().min(1),
@@ -25,7 +29,7 @@ function isSchemaError(error: unknown): boolean {
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -60,7 +64,7 @@ export async function POST(request: Request) {
           409
         )
       }
-      console.error('Failed to update Google account type override:', error)
+      log.error('Failed to update Google account type override', error)
       return ApiErrors.database()
     }
 
@@ -80,7 +84,7 @@ export async function POST(request: Request) {
       account_type_overridden: resolved.overridden,
     })
   } catch (error) {
-    console.error('Google account classification override error:', error)
+    log.error('Google account classification override error', error)
     return ApiErrors.internal()
   }
 }

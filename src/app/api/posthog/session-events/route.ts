@@ -1,6 +1,10 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:posthog:session-events')
 
 const PROJECT_ID = '306226'
 const POSTHOG_HOST = 'https://us.posthog.com'
@@ -12,7 +16,7 @@ const POSTHOG_HOST = 'https://us.posthog.com'
  * Query params:
  * - sessionId: The PostHog session ID
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -61,7 +65,7 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('PostHog API error:', errorText)
+      log.error('PostHog API error', errorText)
       return ApiErrors.internal('Failed to fetch events from PostHog')
     }
 
@@ -76,7 +80,7 @@ export async function GET(request: Request) {
 
     return apiSuccess({ events })
   } catch (error) {
-    console.error('Error fetching PostHog session events:', error)
+    log.error('Error fetching PostHog session events', error)
     return ApiErrors.internal()
   }
 }

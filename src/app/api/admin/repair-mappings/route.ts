@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
@@ -5,6 +6,10 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { getSheetRawRows } from '@/lib/google/sheets'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
+import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:repair-mappings')
 
 const supabase = getAdminClient()
 
@@ -25,7 +30,7 @@ interface RepairResult {
  *
  * This is a one-time fix for data that was saved before proper validation.
  */
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -35,12 +40,23 @@ export async function POST() {
   }
 
   try {
-    // Get the user's Google access token
+    // Resolve Google Sheets token (shared connector token when configured,
+    // otherwise falls back to the current viewer token).
     const session = await getServerSession(authOptions)
-    const accessToken = session?.accessToken as string | undefined
+    if (!session?.user?.email) {
+      return ApiErrors.unauthorized('Not authenticated')
+    }
 
-    if (!accessToken) {
-      return ApiErrors.unauthorized('Google access token required - please sign in again')
+    let accessToken: string
+    try {
+      const resolved = await resolveSheetsAccessToken(session.accessToken)
+      accessToken = resolved.accessToken
+    } catch (authError) {
+      const mapped = mapSheetsAuthError(authError)
+      if (mapped.status === 401) {
+        return ApiErrors.unauthorized(mapped.message)
+      }
+      return ApiErrors.internal(mapped.message)
     }
 
     // Find all column_mappings with empty or null source_column
@@ -66,24 +82,28 @@ export async function POST() {
       .or('source_column.is.null,source_column.eq.')
 
     if (fetchError) {
-      console.error('Error fetching broken mappings:', fetchError)
+      log.error('Error fetching broken mappings', fetchError)
       return ApiErrors.database(fetchError.message)
     }
 
     if (!brokenMappings || brokenMappings.length === 0) {
       // Check if there are any mappings at all to verify query is correct
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from('column_mappings')
         .select('*', { count: 'exact', head: true })
 
+      if (countError) {
+        log.error('Error counting column_mappings', countError)
+      }
+
       return apiSuccess({
         message: 'No broken mappings found',
-        totalMappings: count,
+        totalMappings: count ?? 0,
         repaired: 0,
       })
     }
 
-    console.log(`[repair-mappings] Found ${brokenMappings.length} mappings with empty source_column`)
+    log.info(`[repair-mappings] Found ${brokenMappings.length} mappings with empty source_column`)
 
     // Group by tab_mapping to minimize sheet fetches
     const byTabMapping = new Map<string, typeof brokenMappings>()
@@ -108,7 +128,7 @@ export async function POST() {
       } | null
 
       if (!tabMapping?.data_source?.spreadsheet_id) {
-        console.log(`[repair-mappings] Skipping tab ${tabMappingId} - no spreadsheet_id`)
+        log.info(`[repair-mappings] Skipping tab ${tabMappingId} - no spreadsheet_id`)
         results.push({
           tabMappingId,
           tabName: tabMapping?.tab_name || 'Unknown',
@@ -124,7 +144,7 @@ export async function POST() {
       const tabName = tabMapping.tab_name
       const headerRow = tabMapping.header_row ?? 0
 
-      console.log(`[repair-mappings] Fetching headers for ${sheetName} / ${tabName}`)
+      log.info(`[repair-mappings] Fetching headers for ${sheetName} / ${tabName}`)
 
       try {
         // Fetch raw rows from the sheet (need enough rows to get to header row)
@@ -146,7 +166,9 @@ export async function POST() {
         const details: string[] = []
         let repairedCount = 0
 
-        // Update each broken mapping
+        // Collect batch updates to avoid N+1 sequential queries
+        const batchUpdates: { id: string; source_column: string; target_field: string | null }[] = []
+
         for (const mapping of mappings) {
           const colIndex = mapping.source_column_index
           if (colIndex === null || colIndex === undefined) {
@@ -160,18 +182,33 @@ export async function POST() {
             continue
           }
 
-          // Update the column_mapping with the correct source_column
-          const { error: updateError } = await supabase
-            .from('column_mappings')
-            .update({ source_column: header })
-            .eq('id', mapping.id)
+          batchUpdates.push({ id: mapping.id, source_column: header, target_field: mapping.target_field })
+        }
 
-          if (updateError) {
-            details.push(`Column ${mapping.target_field}: update failed - ${updateError.message}`)
-          } else {
-            details.push(`Column ${mapping.target_field}: repaired → "${header}"`)
+        // Execute updates in parallel (batched, not sequential N+1)
+        const updateResults = await Promise.allSettled(
+          batchUpdates.map(({ id, source_column }) =>
+            supabase
+              .from('column_mappings')
+              .update({ source_column })
+              .eq('id', id)
+              .select('id')
+              .single()
+          )
+        )
+
+        for (let i = 0; i < updateResults.length; i++) {
+          const result = updateResults[i]
+          const { target_field, source_column } = batchUpdates[i]
+          if (result.status === 'fulfilled' && !result.value.error) {
+            details.push(`Column ${target_field}: repaired → "${source_column}"`)
             repairedCount++
             totalRepaired++
+          } else {
+            const errMsg = result.status === 'rejected'
+              ? String(result.reason)
+              : result.value.error?.message ?? 'Unknown error'
+            details.push(`Column ${target_field}: update failed - ${errMsg}`)
           }
         }
 
@@ -184,7 +221,7 @@ export async function POST() {
           details,
         })
       } catch (sheetError) {
-        console.error(`[repair-mappings] Error fetching sheet ${tabName}:`, sheetError)
+        log.error(`[repair-mappings] Error fetching sheet ${tabName}`, sheetError)
         results.push({
           tabMappingId,
           tabName,
@@ -203,7 +240,7 @@ export async function POST() {
       results,
     })
   } catch (error) {
-    console.error('[repair-mappings] Error:', error)
+    log.error('[repair-mappings] Error', error)
     return ApiErrors.internal()
   }
 }
@@ -213,7 +250,7 @@ export async function POST() {
  *
  * Check how many mappings need repair without fixing them.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -246,17 +283,25 @@ export async function GET() {
       .or('tab_name.is.null,tab_name.eq.')
 
     if (tabError) {
-      console.error('Error checking tab_mappings:', tabError)
+      log.error('Error checking tab_mappings', tabError)
     }
 
     // Get total counts for context
-    const { count: totalMappings } = await supabase
+    const { count: totalMappings, error: mappingCountErr } = await supabase
       .from('column_mappings')
       .select('*', { count: 'exact', head: true })
 
-    const { count: totalTabs } = await supabase
+    if (mappingCountErr) {
+      log.error('Error counting column_mappings', mappingCountErr)
+    }
+
+    const { count: totalTabs, error: tabCountErr } = await supabase
       .from('tab_mappings')
       .select('*', { count: 'exact', head: true })
+
+    if (tabCountErr) {
+      log.error('Error counting tab_mappings', tabCountErr)
+    }
 
     // Group broken mappings by sheet for readability
     const bySheet = new Map<string, { tabName: string; count: number; fields: string[] }>()
@@ -287,7 +332,7 @@ export async function GET() {
       brokenTabs: brokenTabs?.map(t => ({ id: t.id, tab_name: t.tab_name })) || [],
     })
   } catch (error) {
-    console.error('[repair-mappings] GET error:', error)
+    log.error('[repair-mappings] GET error', error)
     return ApiErrors.internal()
   }
 }

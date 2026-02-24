@@ -39,6 +39,9 @@ import {
   setChannelsRefreshInProgress,
 } from './slack-cache'
 import type { SlackUser, SlackChannel } from '@/lib/slack/types'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('lib:connectors:slack')
 
 /**
  * Slack connector implementation
@@ -173,7 +176,7 @@ export class SlackConnector extends BaseConnector<SlackConnectorConfig> {
         setUsersRefreshInProgress(true)
         slackClient.listUsers()
           .then(users => setCachedUsers(users))
-          .catch(err => console.error('Background users refresh failed:', err))
+          .catch(err => log.error('Background users refresh failed', err))
           .finally(() => setUsersRefreshInProgress(false))
       }
       return cached
@@ -195,7 +198,7 @@ export class SlackConnector extends BaseConnector<SlackConnectorConfig> {
         setChannelsRefreshInProgress(true)
         slackClient.listChannels()
           .then(channels => setCachedChannels(channels))
-          .catch(err => console.error('Background channels refresh failed:', err))
+          .catch(err => log.error('Background channels refresh failed', err))
           .finally(() => setChannelsRefreshInProgress(false))
       }
       return cached

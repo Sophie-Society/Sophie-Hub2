@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -6,6 +6,9 @@ import { apiSuccess, apiError, apiValidationError } from '@/lib/api/response'
 import { getAnthropicApiKey } from '@/lib/settings'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:summarize-feedback')
 
 const RequestSchema = z.object({
   feedbackId: z.string().uuid('Invalid feedback ID'),
@@ -17,7 +20,7 @@ const RequestSchema = z.object({
  * Quick, cheap summarization of a feedback item using Haiku
  * Returns a brief summary of the problem without detailed analysis
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth check - admin only
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
   try {
     anthropicKey = await getAnthropicApiKey()
   } catch {
-    console.error('Failed to get Anthropic API key')
+    log.error('Failed to get Anthropic API key')
     return apiError(
       'SERVICE_UNAVAILABLE',
       'AI is not configured. Add your Anthropic API key in Settings → API Keys.',
@@ -126,7 +129,7 @@ Reported by: ${feedback.submitted_by_email}`
       analyzedAt: now,
     })
   } catch (error) {
-    console.error('Claude API error:', error)
+    log.error('Claude API error', error)
     return apiError('AI_ERROR', 'Failed to summarize feedback', 500)
   }
 }

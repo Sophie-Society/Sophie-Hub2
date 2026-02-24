@@ -5,13 +5,17 @@
  * Source: 'slack_channel', entity_type: 'partners'
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { invalidateChannelsCache } from '@/lib/connectors/slack-cache'
+import { SLACK } from '@/lib/constants'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:mappings:channels')
 
 const CreateMappingSchema = z.object({
   partner_id: z.string().uuid('partner_id must be a valid UUID'),
@@ -19,10 +23,19 @@ const CreateMappingSchema = z.object({
   channel_name: z.string().optional(),
 })
 
+type SlackChannelType = 'partner_facing' | 'alerts' | 'internal'
+
+function detectChannelType(channelName: string): SlackChannelType {
+  const lower = channelName.toLowerCase()
+  if (SLACK.PARTNER_CHANNEL_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return 'alerts'
+  if (SLACK.PARTNER_CHANNEL_INTERNAL_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return 'internal'
+  return 'partner_facing'
+}
+
 /**
  * GET — Fetch all channel ↔ partner mappings
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -39,7 +52,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching channel-partner mappings:', error)
+      log.error('Error fetching channel-partner mappings', error)
       return ApiErrors.database()
     }
 
@@ -63,12 +76,14 @@ export async function GET() {
       partner_tier: partnerInfo[m.entity_id]?.tier || null,
       channel_id: m.external_id,
       channel_name: (m.metadata as Record<string, unknown>)?.channel_name || null,
+      channel_type:
+        ((m.metadata as Record<string, unknown>)?.channel_type as SlackChannelType | undefined) || 'partner_facing',
       created_at: m.created_at,
     })) || []
 
     return apiSuccess({ mappings: enriched, count: enriched.length })
   } catch (error) {
-    console.error('GET channel-partner mappings error:', error)
+    log.error('GET channel-partner mappings error', error)
     return ApiErrors.internal()
   }
 }
@@ -76,7 +91,7 @@ export async function GET() {
 /**
  * POST — Create or update a channel ↔ partner mapping
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -91,6 +106,8 @@ export async function POST(request: NextRequest) {
 
     const { partner_id, channel_id, channel_name } = validation.data
     const supabase = getAdminClient()
+    const resolvedChannelName = channel_name || channel_id
+    const channelType = detectChannelType(resolvedChannelName)
 
     // Verify partner exists
     const { data: partner, error: partnerError } = await supabase
@@ -113,7 +130,11 @@ export async function POST(request: NextRequest) {
         entity_id: partner_id,
         source: 'slack_channel',
         external_id: channel_id,
-        metadata: channel_name ? { channel_name } : {},
+        metadata: {
+          channel_name: resolvedChannelName,
+          channel_type: channelType,
+          match_type: 'manual',
+        },
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'source,external_id',
@@ -122,7 +143,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error saving channel-partner mapping:', error)
+      log.error('Error saving channel-partner mapping', error)
       return ApiErrors.database()
     }
 
@@ -131,7 +152,7 @@ export async function POST(request: NextRequest) {
       .from('slack_sync_state')
       .upsert({
         channel_id,
-        channel_name: channel_name || channel_id,
+        channel_name: resolvedChannelName,
         partner_id,
       }, {
         onConflict: 'channel_id',
@@ -146,7 +167,7 @@ export async function POST(request: NextRequest) {
       },
     }, 201)
   } catch (error) {
-    console.error('POST channel-partner mapping error:', error)
+    log.error('POST channel-partner mapping error', error)
     return ApiErrors.internal()
   }
 }
@@ -154,7 +175,7 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE — Remove a channel ↔ partner mapping
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -185,7 +206,7 @@ export async function DELETE(request: NextRequest) {
       .eq('source', 'slack_channel')
 
     if (error) {
-      console.error('Error deleting channel-partner mapping:', error)
+      log.error('Error deleting channel-partner mapping', error)
       return ApiErrors.database()
     }
 
@@ -201,7 +222,7 @@ export async function DELETE(request: NextRequest) {
 
     return apiSuccess({ deleted: true })
   } catch (error) {
-    console.error('DELETE channel-partner mapping error:', error)
+    log.error('DELETE channel-partner mapping error', error)
     return ApiErrors.internal()
   }
 }

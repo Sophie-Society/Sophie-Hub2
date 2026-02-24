@@ -1,9 +1,13 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getFieldsForEntity, getReferenceFields } from '@/lib/entity-fields'
 import type { EntityType } from '@/types/entities'
 import type { FieldGroup } from '@/lib/entity-fields/types'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:flow-map')
 
 const supabase = getAdminClient()
 
@@ -18,7 +22,7 @@ const ALL_ENTITIES: EntityType[] = ['partners', 'staff', 'asins']
  * 2. Query column_mappings for those tabs
  * 3. Merge with entity field registry in-memory
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -276,7 +280,7 @@ export async function GET() {
       'Cache-Control': 'private, max-age=30, stale-while-revalidate=120',
     })
   } catch (error) {
-    console.error('Error in GET /api/flow-map:', error)
+    log.error('Error in GET /api/flow-map', error)
     return ApiErrors.database(error instanceof Error ? error.message : 'Database error')
   }
 }

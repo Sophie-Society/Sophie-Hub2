@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -7,6 +7,9 @@ import { getAnthropicApiKey, getPostHogApiKey } from '@/lib/settings'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { getCodebaseContextForBug, formatContextForPrompt } from '@/lib/ai/codebase-context'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:analyze-bug')
 
 const POSTHOG_PROJECT_ID = '306226'
 const POSTHOG_HOST = 'https://us.posthog.com'
@@ -50,14 +53,14 @@ async function fetchPostHogSessionEvents(
     })
 
     if (!response.ok) {
-      console.error('PostHog API error:', response.status, await response.text())
+      log.error('PostHog API error', { status: response.status, body: await response.text() })
       return []
     }
 
     const data = await response.json()
     return data.results || []
   } catch (error) {
-    console.error('Failed to fetch PostHog events:', error)
+    log.error('Failed to fetch PostHog events', error)
     return []
   }
 }
@@ -117,7 +120,7 @@ function extractFilePathsFromStack(stack?: string): string[] {
  * POST /api/ai/analyze-bug
  * Analyze a bug report using AI with PostHog session data
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth check - admin only
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
@@ -172,7 +175,7 @@ export async function POST(request: NextRequest) {
   try {
     anthropicKey = await getAnthropicApiKey()
   } catch {
-    console.error('[analyze-bug] Anthropic API key not configured')
+    log.error('[analyze-bug] Anthropic API key not configured')
     return apiError(
       'SERVICE_UNAVAILABLE',
       'AI analysis is not configured. Add your Anthropic API key in Settings → Advanced.',
@@ -248,10 +251,10 @@ PostHog API key not configured, so session replay data is not available.`)
   }
 
   // Call Claude for analysis
-  console.log('[analyze-bug] Context length:', contextParts.join('\n').length, 'chars')
-  console.log('[analyze-bug] Errors found:', errors.length)
-  console.log('[analyze-bug] PostHog available:', posthogAvailable)
-  console.log('[analyze-bug] Codebase files:', codebaseContext.files.length)
+  log.info('[analyze-bug] Context length', { chars: contextParts.join('\n').length })
+  log.info('[analyze-bug] Errors found', { count: errors.length })
+  log.info('[analyze-bug] PostHog available', { posthogAvailable })
+  log.info('[analyze-bug] Codebase files', { count: codebaseContext.files.length })
 
   const anthropic = new Anthropic({ apiKey: anthropicKey })
 
@@ -339,7 +342,7 @@ Respond with a JSON object matching this structure:
       analyzedAt: now,
     })
   } catch (error) {
-    console.error('Claude API error:', error)
+    log.error('Claude API error', error)
 
     // Provide more specific error messages
     if (error instanceof Error) {
@@ -352,7 +355,7 @@ Respond with a JSON object matching this structure:
       if (error.message.includes('insufficient') || error.message.includes('credit')) {
         return apiError('AI_ERROR', 'Anthropic API credits exhausted. Please check your API account.', 402)
       }
-      console.error('[analyze-bug] AI analysis failed:', error.message)
+      log.error('[analyze-bug] AI analysis failed', error.message)
       return apiError('AI_ERROR', 'AI analysis failed. Please try again.', 500)
     }
 

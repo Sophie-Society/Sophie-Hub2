@@ -1,14 +1,18 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { maskValue } from '@/lib/encryption'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:settings')
 
 /**
  * GET /api/admin/settings
  * Returns all system settings with masked values (admin only)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -21,7 +25,7 @@ export async function GET() {
       .order('key')
 
     if (error) {
-      console.error('Failed to fetch settings:', error)
+      log.error('Failed to fetch settings', error)
       return ApiErrors.database(error.message)
     }
 
@@ -37,7 +41,7 @@ export async function GET() {
 
     return apiSuccess({ settings: maskedSettings })
   } catch (error) {
-    console.error('Settings fetch error:', error)
+    log.error('Settings fetch error', error)
     return apiError('INTERNAL_ERROR', 'Failed to fetch settings', 500)
   }
 }

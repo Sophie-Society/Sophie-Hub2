@@ -7,6 +7,7 @@
  * Returns all users including suspended/deleted for admin visibility.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -23,6 +24,9 @@ import type { DirectorySnapshotRow } from '@/lib/google-workspace/types'
 /** Snapshot row without raw_profile — used for browser-facing responses */
 type DirectoryUserRow = Omit<DirectorySnapshotRow, 'raw_profile'>
 import { resolveGoogleAccountType } from '@/lib/google-workspace/account-classification'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:google-workspace:users')
 
 function isSnapshotSchemaError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code
@@ -49,14 +53,14 @@ async function fetchSnapshotUsers(): Promise<DirectoryUserRow[]> {
       // First-run or schema drift: treat as empty snapshot so UI can guide operator to sync.
       return []
     }
-    console.error('Failed to fetch directory snapshot:', error)
+    log.error('Failed to fetch directory snapshot', error)
     throw error
   }
 
   return (data || []) as unknown as DirectoryUserRow[]
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -71,7 +75,7 @@ export async function GET() {
         setDirectoryUsersRefreshInProgress(true)
         fetchSnapshotUsers()
           .then(users => setCachedDirectoryUsers(users))
-          .catch(err => console.error('Background directory refresh failed:', err))
+          .catch(err => log.error('Background directory refresh failed', err))
           .finally(() => setDirectoryUsersRefreshInProgress(false))
       }
 
@@ -128,7 +132,7 @@ export async function GET() {
       cached: false,
     })
   } catch (error) {
-    console.error('Directory users error:', error)
+    log.error('Directory users error', error)
     return ApiErrors.database()
   }
 }

@@ -1,14 +1,17 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { DataSourceSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:data-sources:reorder')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
 
 // POST - Reorder data sources (admin only)
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -23,19 +26,26 @@ export async function POST(request: NextRequest) {
 
     const { sourceIds } = validation.data
 
-    // Update each source with its new display_order
-    const updates = sourceIds.map((id, index) =>
-      supabase
-        .from('data_sources')
-        .update({ display_order: index })
-        .eq('id', id)
+    // Update each source with its new display_order (parallel batch)
+    const results = await Promise.all(
+      sourceIds.map((id, index) =>
+        supabase
+          .from('data_sources')
+          .update({ display_order: index })
+          .eq('id', id)
+          .select('id')
+          .single()
+      )
     )
 
-    await Promise.all(updates)
+    const failed = results.filter(r => r.error)
+    if (failed.length > 0) {
+      log.error('Some reorder updates failed', { count: failed.length })
+    }
 
-    return apiSuccess({ reordered: true })
+    return apiSuccess({ reordered: true, updated: results.length - failed.length })
   } catch (error) {
-    console.error('Error reordering sources:', error)
+    log.error('Error reordering sources', error)
     return ApiErrors.database('Failed to reorder sources')
   }
 }

@@ -1,9 +1,13 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError, ApiErrors, apiValidationError } from '@/lib/api/response'
 import { z } from 'zod'
 import { invalidateMappingsCache } from '@/lib/status-colors/cache'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:admin:status-mappings')
 
 const VALID_BUCKETS = ['healthy', 'onboarding', 'warning', 'paused', 'offboarding', 'churned'] as const
 
@@ -22,7 +26,7 @@ interface RouteContext {
  * PUT /api/admin/status-mappings/[id]
  * Updates a status color mapping (admin only)
  */
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -107,7 +111,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
     return apiSuccess({ mapping })
   } catch (error) {
-    console.error('Status mapping update error:', error)
+    log.error('Status mapping update error', error)
     return apiError('INTERNAL_ERROR', 'Failed to update status mapping', 500)
   }
 }
@@ -116,7 +120,7 @@ export async function PUT(request: Request, context: RouteContext) {
  * DELETE /api/admin/status-mappings/[id]
  * Deletes a status color mapping (admin only, not system defaults)
  */
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -154,7 +158,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     return apiSuccess({ deleted: true })
   } catch (error) {
-    console.error('Status mapping deletion error:', error)
+    log.error('Status mapping deletion error', error)
     return apiError('INTERNAL_ERROR', 'Failed to delete status mapping', 500)
   }
 }

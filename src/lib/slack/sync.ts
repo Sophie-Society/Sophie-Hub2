@@ -15,6 +15,9 @@
 
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getChannelHistoryPage, joinChannel } from './client'
+import { createLogger } from '@/lib/logger'
+const log = createLogger('lib:slack:sync')
+
 import type {
   SlackMessageMeta,
   ChannelSyncStateV2,
@@ -88,7 +91,7 @@ async function buildStaffLookup(): Promise<Map<string, string>> {
     .eq('source', 'slack_user')
 
   if (error) {
-    console.error('Failed to build staff lookup:', error)
+    log.error('Failed to build staff lookup', error)
     return new Map()
   }
 
@@ -196,7 +199,7 @@ async function upsertMessages(messages: ParsedMessage[]): Promise<number> {
       .select('id')
 
     if (error) {
-      console.error(`Message upsert batch ${i / UPSERT_BATCH_SIZE + 1} failed:`, error)
+      log.error(`Message upsert batch ${i / UPSERT_BATCH_SIZE + 1} failed`, error)
       // Continue with remaining batches
     } else {
       inserted += data?.length || 0
@@ -262,7 +265,7 @@ export async function syncChannel(
     if (!channel.bot_is_member) {
       const membership = await ensureBotMembership(channel.channel_id, false)
       if (!membership.isMember && membership.error) {
-        console.warn(`joinChannel warning for ${channel.channel_id}: ${membership.error}`)
+        log.warn(`joinChannel warning for ${channel.channel_id}: ${membership.error}`)
       }
       // Do NOT set bot_is_member here — wait for successful history read
     }
@@ -297,7 +300,7 @@ export async function syncChannel(
     } else {
       result.error = errorMsg
     }
-    console.error(`syncChannel ${channel.channel_id} (${channel.channel_name}) error:`, errorMsg)
+    log.error(`syncChannel ${channel.channel_id} (${channel.channel_name}) error`, errorMsg)
     await updateSyncState(channel.channel_id, { error: errorMsg })
   }
 
@@ -459,7 +462,7 @@ async function updateSyncState(
     .eq('channel_id', channelId)
 
   if (error) {
-    console.error(`Failed to update sync state for ${channelId}:`, error)
+    log.error(`Failed to update sync state for ${channelId}`, error)
   }
 }
 
@@ -595,7 +598,7 @@ export async function processChunk(runId: string): Promise<SyncRunSummary> {
     .range(offset, offset + CHANNELS_PER_CHUNK - 1)
 
   if (channelsError || !channels) {
-    console.error('Failed to fetch channels for sync:', channelsError)
+    log.error('Failed to fetch channels for sync', channelsError)
     await supabase
       .from('slack_sync_runs')
       .update({ error: channelsError?.message || 'Failed to fetch channels', status: 'failed' })
@@ -627,7 +630,7 @@ export async function processChunk(runId: string): Promise<SyncRunSummary> {
     // Renew lease heartbeat with CAS before each channel to prove ownership.
     const renewedLease = await renewLeaseHeartbeat(runId, leaseExpiresAt)
     if (!renewedLease) {
-      console.warn(`Lease lost for run ${runId} — aborting chunk mid-processing`)
+      log.warn(`Lease lost for run ${runId} — aborting chunk mid-processing`)
       leaseLost = true
       break
     }
@@ -643,7 +646,7 @@ export async function processChunk(runId: string): Promise<SyncRunSummary> {
     }
     processedChannels++
 
-    console.log(
+    log.info(
       `syncChannel: ${channel.channel_name} — ${result.success ? 'OK' : 'FAIL'}` +
       ` (${result.messages_synced} msgs${result.error ? `, error: ${result.error}` : ''})`
     )
@@ -674,7 +677,7 @@ export async function processChunk(runId: string): Promise<SyncRunSummary> {
       .eq('worker_lease_expires_at', leaseExpiresAt)
 
     if (progressError) {
-      console.warn(`Progress update skipped for run ${runId} (lease changed): ${progressError.message}`)
+      log.warn(`Progress update skipped for run ${runId} (lease changed): ${progressError.message}`)
     }
   }
 
@@ -687,7 +690,7 @@ export async function processChunk(runId: string): Promise<SyncRunSummary> {
     duration_ms: Date.now() - startTime,
   }
 
-  console.log(
+  log.info(
     `Sync chunk complete: ${syncedCount} synced, ${failedCount} failed, ` +
     `${totalMessages} msgs, ${summary.duration_ms}ms, ` +
     `offset ${offset}→${newOffset}/${totalChannels}` +
@@ -756,13 +759,13 @@ export async function reclassifyStaffMessages(
     .select('id')
 
   if (error) {
-    console.error(`Reclassification failed for ${slackUserId}:`, error)
+    log.error(`Reclassification failed for ${slackUserId}`, error)
     return 0
   }
 
   const count = data?.length || 0
   if (count > 0) {
-    console.log(`Reclassified ${count} messages: ${slackUserId} → staff ${staffId}`)
+    log.info(`Reclassified ${count} messages: ${slackUserId} → staff ${staffId}`)
   }
   return count
 }
@@ -791,13 +794,13 @@ export async function unclassifyStaffMessages(
     .select('id')
 
   if (error) {
-    console.error(`Un-classification failed for ${slackUserId}:`, error)
+    log.error(`Un-classification failed for ${slackUserId}`, error)
     return 0
   }
 
   const count = data?.length || 0
   if (count > 0) {
-    console.log(`Un-classified ${count} messages: ${slackUserId} (staff ${staffId} removed)`)
+    log.info(`Un-classified ${count} messages: ${slackUserId} (staff ${staffId} removed)`)
   }
   return count
 }
@@ -816,7 +819,7 @@ export async function bulkReclassifyStaffMessages(
     total += await reclassifyStaffMessages(slackUserId, staffId)
   }
   if (total > 0) {
-    console.log(`Bulk reclassification complete: ${total} messages across ${mappings.length} staff mappings`)
+    log.info(`Bulk reclassification complete: ${total} messages across ${mappings.length} staff mappings`)
   }
   return total
 }

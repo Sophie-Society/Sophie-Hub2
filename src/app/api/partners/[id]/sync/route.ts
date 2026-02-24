@@ -1,11 +1,17 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { getConnector, hasConnector, type GoogleSheetConnectorConfig, type ConnectorTypeId } from '@/lib/connectors'
+import { buildPartnerTypePersistenceFields } from '@/lib/partners/computed-partner-type'
 import { applyTransform } from '@/lib/sync/transforms'
 import type { TransformType } from '@/lib/sync/types'
+import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:partners:sync')
 
 const supabase = getAdminClient()
 
@@ -16,6 +22,12 @@ interface SyncSourceResult {
   success: boolean
   fieldsUpdated: string[]
   error?: string
+}
+
+function asNullableString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
 }
 
 /**
@@ -33,14 +45,26 @@ interface SyncSourceResult {
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
   // Get session for access token (needed for OAuth-based connectors)
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken) {
-    return ApiErrors.unauthorized('No access token available. Please re-authenticate.')
+  if (!session?.user?.email) {
+    return ApiErrors.unauthorized('Not authenticated')
+  }
+
+  let accessToken: string
+  try {
+    const resolved = await resolveSheetsAccessToken(session.accessToken)
+    accessToken = resolved.accessToken
+  } catch (authError) {
+    const mapped = mapSheetsAuthError(authError)
+    if (mapped.status === 401) {
+      return ApiErrors.unauthorized(mapped.message)
+    }
+    return ApiErrors.internal(mapped.message)
   }
 
   try {
@@ -55,7 +79,7 @@ export async function POST(
     // 1. Get the partner with current source_data
     const { data: partner, error: partnerError } = await supabase
       .from('partners')
-      .select('id, brand_name, partner_code, source_data')
+      .select('id, brand_name, partner_code, source_data, pod_leader_name, brand_manager_name')
       .eq('id', id)
       .single()
 
@@ -82,7 +106,7 @@ export async function POST(
       .eq('status', 'active')
 
     if (tabError) {
-      console.error('Error fetching tab mappings:', tabError)
+      log.error('Error fetching tab mappings', tabError)
       return ApiErrors.database()
     }
 
@@ -168,7 +192,7 @@ export async function POST(
         // Fetch source data using the appropriate connector
         const connector = getConnector<GoogleSheetConnectorConfig>(connectorType)
         const sourceData = await connector.getData(
-          session.accessToken,
+          accessToken,
           dataSource.connection_config as unknown as GoogleSheetConnectorConfig,
           tabMapping.tab_name,
           tabMapping.header_row
@@ -251,7 +275,7 @@ export async function POST(
               fieldsFromThisSource.push(mapping.target_field)
             }
           } catch (error) {
-            console.error(`Transform failed for ${mapping.source_column}:`, error)
+            log.error(`Transform failed for ${mapping.source_column}`, error)
           }
         }
 
@@ -264,14 +288,14 @@ export async function POST(
         })
 
       } catch (error) {
-        console.error(`Error syncing from ${dataSource.name}:`, error)
+        log.error(`Error syncing from ${dataSource.name}`, error)
         syncResults.push({
           sourceName: dataSource.name,
           sourceType: dataSource.type,
           tabName: tabMapping.tab_name,
           success: false,
           fieldsUpdated: [],
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Failed to sync from this source',
         })
       }
     }
@@ -287,17 +311,24 @@ export async function POST(
       })
     }
 
+    const computedPartnerTypeFields = buildPartnerTypePersistenceFields({
+      sourceData: mergedSourceData,
+      podLeaderName: asNullableString(mergedFields.pod_leader_name ?? partner.pod_leader_name),
+      brandManagerName: asNullableString(mergedFields.brand_manager_name ?? partner.brand_manager_name),
+    })
+
     const { error: updateError } = await supabase
       .from('partners')
       .update({
         ...mergedFields,
         source_data: mergedSourceData,
+        ...computedPartnerTypeFields,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
 
     if (updateError) {
-      console.error('Error updating partner:', updateError)
+      log.error('Error updating partner', updateError)
       return ApiErrors.database()
     }
 
@@ -311,7 +342,7 @@ export async function POST(
     })
 
   } catch (error) {
-    console.error('Error in POST /api/partners/[id]/sync:', error)
+    log.error('Error in POST /api/partners/[id]/sync', error)
 
     if (error instanceof Error) {
       if (error.message.includes('invalid_grant') || error.message.includes('Token has been expired')) {

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getMappingAssistant, type ColumnInput, type MappingContext } from '@/lib/ai/mapping-sdk'
@@ -6,6 +6,9 @@ import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { hasSystemSetting } from '@/lib/settings'
 import { audit } from '@/lib/audit'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:suggest-mapping')
 
 // =============================================================================
 // Validation Schema
@@ -60,7 +63,7 @@ const AI_RATE_LIMIT = {
  *   }
  * }
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse | Response> {
   // Require data-enrichment:write permission
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
@@ -151,7 +154,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('AI suggestion error:', error)
+    log.error('AI suggestion error', error)
 
     // Check for specific Anthropic errors
     if (error instanceof Error) {

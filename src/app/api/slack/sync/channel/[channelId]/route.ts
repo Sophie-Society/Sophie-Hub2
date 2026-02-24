@@ -6,16 +6,19 @@
  * forward sync, and backfill for one channel.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
 import { syncSingleChannel } from '@/lib/slack/sync'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:slack:sync:channel')
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ channelId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -26,7 +29,7 @@ export async function POST(
   }
 
   try {
-    console.log(`Single channel sync triggered by ${auth.user.email}: ${channelId}`)
+    log.info(`Single channel sync triggered by ${auth.user.email}: ${channelId}`)
 
     const result = await syncSingleChannel(channelId)
 
@@ -45,7 +48,7 @@ export async function POST(
       messages_synced: result.messages_synced,
     })
   } catch (error) {
-    console.error(`POST sync/channel/${channelId} error:`, error)
+    log.error(`POST sync/channel/${channelId} error`, error)
     return ApiErrors.internal()
   }
 }

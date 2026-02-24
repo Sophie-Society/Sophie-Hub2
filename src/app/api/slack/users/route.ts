@@ -8,14 +8,18 @@
  * - Breakdown stats by user type
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { slackConnector } from '@/lib/connectors/slack'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { classifySlackUser, type SlackUserType } from '@/lib/slack/types'
+import { createLogger } from '@/lib/logger'
 
-export async function GET() {
+const log = createLogger('api:slack:users')
+
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -96,7 +100,7 @@ export async function GET() {
       breakdown,
     })
   } catch (error) {
-    console.error('Failed to fetch Slack users:', error)
+    log.error('Failed to fetch Slack users', error)
     return ApiErrors.internal()
   }
 }

@@ -1,9 +1,14 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { google } from 'googleapis'
+import { mapSheetsAuthError, resolveSheetsAccessToken } from '@/lib/google/sheets-auth'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:partners:source-url')
 
 const supabase = getAdminClient()
 
@@ -57,7 +62,7 @@ function parseWeeklyColumnDate(columnName: string): Date | null {
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -74,6 +79,22 @@ export async function GET(
   }
 
   const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return ApiErrors.unauthorized('Not authenticated')
+  }
+
+  let accessToken: string | null = null
+  try {
+    const resolved = await resolveSheetsAccessToken(session.accessToken)
+    accessToken = resolved.accessToken
+  } catch (authError) {
+    const mapped = mapSheetsAuthError(authError)
+    // Source URL can still return a non-cell deep link when auth is unavailable.
+    // Only hard-fail auth errors that indicate an unauthenticated user.
+    if (mapped.status === 401) {
+      return ApiErrors.unauthorized(mapped.message)
+    }
+  }
 
   try {
     // 1. Get the partner
@@ -175,12 +196,12 @@ export async function GET(
     let cellReference: string | null = null
     let tabGid: number | null = null
 
-    console.log(`[source-url] Looking up: ${partner.brand_name}, keyColumn: ${sourceKeyColumn}, hasToken: ${!!session?.accessToken}`)
+    log.info(`[source-url] Looking up: ${partner.brand_name}, keyColumn: ${sourceKeyColumn}, hasToken: ${!!accessToken}`)
 
-    if (session?.accessToken && keyValue) {
+    if (accessToken && keyValue) {
       try {
         const googleAuth = new google.auth.OAuth2()
-        googleAuth.setCredentials({ access_token: session.accessToken })
+        googleAuth.setCredentials({ access_token: accessToken })
         const sheets = google.sheets({ version: 'v4', auth: googleAuth })
 
         // Get spreadsheet metadata for GID
@@ -202,7 +223,7 @@ export async function GET(
         })
 
         const rows = dataResponse.data.values || []
-        console.log(`[source-url] Fetched ${rows.length} rows, headerRow: ${headerRow}`)
+        log.info(`[source-url] Fetched ${rows.length} rows, headerRow: ${headerRow}`)
 
         if (rows.length > 0) {
           const headers = rows[0] as string[]
@@ -218,7 +239,7 @@ export async function GET(
             }
           }
 
-          console.log(`[source-url] Key column index: ${keyColIndex}, headers sample: ${headers.slice(0, 5).join(', ')}`)
+          log.info(`[source-url] Key column index: ${keyColIndex}, headers sample: ${headers.slice(0, 5).join(', ')}`)
 
           if (keyColIndex !== -1) {
             // Find the partner's row
@@ -247,7 +268,7 @@ export async function GET(
                   }
                 }
 
-                console.log(`[source-url] Found row ${rowNumber}, latestColIndex: ${latestColIndex}`)
+                log.info(`[source-url] Found row ${rowNumber}, latestColIndex: ${latestColIndex}`)
 
                 if (latestColIndex !== null) {
                   columnLetter = columnIndexToLetter(latestColIndex)
@@ -260,13 +281,13 @@ export async function GET(
           }
         }
 
-        console.log(`[source-url] Result - Partner: ${partner.brand_name}, Row: ${rowNumber}, Cell: ${cellReference}, GID: ${tabGid}`)
+        log.info(`[source-url] Result - Partner: ${partner.brand_name}, Row: ${rowNumber}, Cell: ${cellReference}, GID: ${tabGid}`)
 
       } catch (error) {
-        console.error('[source-url] Error fetching sheet data:', error)
+        log.error('[source-url] Error fetching sheet data', error)
       }
     } else {
-      console.log(`[source-url] Skipping lookup - no accessToken or keyValue`)
+      log.info(`[source-url] Skipping lookup - no accessToken or keyValue`)
     }
 
     // 5. Build the URL
@@ -294,7 +315,7 @@ export async function GET(
     } satisfies SourceUrlResponse)
 
   } catch (error) {
-    console.error('Error in GET /api/partners/[id]/source-url:', error)
+    log.error('Error in GET /api/partners/[id]/source-url', error)
     return ApiErrors.internal()
   }
 }

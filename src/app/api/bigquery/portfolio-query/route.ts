@@ -12,7 +12,7 @@
  * - Raw table data
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
@@ -23,6 +23,9 @@ import { BIGQUERY } from '@/lib/constants'
 import { VIEW_ALIASES } from '@/types/modules'
 import { COLUMN_METADATA } from '@/lib/bigquery/column-metadata'
 import { z } from 'zod'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:bigquery:portfolio-query')
 
 const supabase = getAdminClient()
 
@@ -112,7 +115,7 @@ function getCached(key: string): unknown | null {
   return entry.data
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -288,7 +291,7 @@ export async function POST(request: NextRequest) {
           query_mode: `portfolio-${mode}`,
         })
       ).catch((err) => {
-        console.error('[bq-portfolio-log] Insert failed:', err)
+        log.error('[bq-portfolio-log] Insert failed', err)
       })
     }).catch(() => {})
 
@@ -351,7 +354,7 @@ export async function POST(request: NextRequest) {
 
     return apiSuccess(result, 200, rateLimitHeaders(rateLimit))
   } catch (error) {
-    console.error('[portfolio-query] Error:', error instanceof Error ? error.message : error)
+    log.error('[portfolio-query] Error', error instanceof Error ? error.message : error)
     return ApiErrors.internal('Portfolio query failed')
   }
 }

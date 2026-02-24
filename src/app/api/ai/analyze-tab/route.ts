@@ -1,10 +1,13 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { hasSystemSetting, getAnthropicApiKey } from '@/lib/settings'
 import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:ai:analyze-tab')
 
 // =============================================================================
 // Validation Schema
@@ -103,7 +106,7 @@ const ANALYZE_TAB_TOOL: Anthropic.Tool = {
 // POST /api/ai/analyze-tab
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse | Response> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -238,7 +241,7 @@ Provide a high-level summary using the summarize_tab tool. Focus on WHAT this ta
 
     return apiSuccess({ summary })
   } catch (error) {
-    console.error('AI tab analysis error:', error)
+    log.error('AI tab analysis error', error)
     if (error instanceof Error && error.message.includes('API key')) {
       return apiError('SERVICE_UNAVAILABLE', 'AI service authentication failed', 503)
     }

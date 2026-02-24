@@ -181,7 +181,6 @@ export const SheetsSchema = {
 // Type exports for use in routes
 // =============================================================================
 
-export type CreateDataSourceInput = z.infer<typeof DataSourceSchema.create>
 export type ReorderDataSourcesInput = z.infer<typeof DataSourceSchema.reorder>
 export type CreateTabMappingInput = z.infer<typeof TabMappingSchema.create>
 export type UpdateTabStatusInput = z.infer<typeof TabMappingSchema.updateStatus>

@@ -5,12 +5,16 @@
  * Returns workspace domain and approximate user count.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { testConnection } from '@/lib/google-workspace/client'
+import { createLogger } from '@/lib/logger'
 
-export async function POST() {
+const logger = createLogger('api:google-workspace:test-connection')
+
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -32,23 +36,25 @@ export async function POST() {
       user_count: info.userCount,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Connection failed'
+    logger.error('Google Workspace test-connection failed', error)
 
-    // Provide specific guidance for common errors
+    const msg = error instanceof Error ? error.message : ''
+
+    // Map known error patterns to user-safe guidance (no internal details exposed)
     let hint = ''
-    if (msg.includes('Not Authorized') || msg.includes('forbidden')) {
-      hint = ' Ensure domain-wide delegation is configured in Google Workspace Admin Console with admin.directory.user.readonly scope.'
+    if (msg.includes('Not Authorized') || msg.toLowerCase().includes('forbidden')) {
+      hint = 'Ensure domain-wide delegation is configured in Google Workspace Admin Console with the admin.directory.user.readonly scope.'
     } else if (msg.includes('GOOGLE_WORKSPACE_')) {
-      hint = ' Check that all required environment variables are set.'
+      hint = 'Check that all required Google Workspace environment variables are set.'
     }
 
     return apiSuccess({
       connected: false,
-      error: msg + hint,
+      error: hint || 'Connection failed. Verify your Google Workspace configuration.',
     })
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   return ApiErrors.notFound('Use POST method')
 }

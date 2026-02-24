@@ -1,7 +1,11 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { TabMappingSchema } from '@/lib/validations/schemas'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:tab-mappings:status')
 
 // Use singleton Supabase client
 const supabase = getAdminClient()
@@ -10,7 +14,7 @@ const supabase = getAdminClient()
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -44,13 +48,13 @@ export async function PATCH(
       .single()
 
     if (error) {
-      console.error('Error updating tab status:', error)
+      log.error('Error updating tab status', error)
       return ApiErrors.database(error.message)
     }
 
     return apiSuccess({ tab: data })
   } catch (error) {
-    console.error('Error in PATCH /api/tab-mappings/[id]/status:', error)
+    log.error('Error in PATCH /api/tab-mappings/[id]/status', error)
     return ApiErrors.internal()
   }
 }

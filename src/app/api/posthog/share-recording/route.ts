@@ -1,6 +1,10 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { getPostHogApiKey } from '@/lib/settings'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('api:posthog:share-recording')
 
 const PROJECT_ID = '306226'
 const POSTHOG_HOST = 'https://us.posthog.com'
@@ -15,7 +19,7 @@ const POSTHOG_HOST = 'https://us.posthog.com'
  * Body:
  * - sessionId: The PostHog session ID
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -73,7 +77,7 @@ export async function POST(request: Request) {
 
     if (!enableRes.ok) {
       const errorText = await enableRes.text()
-      console.error('PostHog sharing PATCH error:', enableRes.status, errorText)
+      log.error('PostHog sharing PATCH error', { status: enableRes.status, body: errorText })
 
       // Try POST as fallback (some API versions use POST)
       const createRes = await fetch(urlWithKey, {
@@ -86,7 +90,7 @@ export async function POST(request: Request) {
 
       if (!createRes.ok) {
         const createErrorText = await createRes.text()
-        console.error('PostHog sharing POST error:', createRes.status, createErrorText)
+        log.error('PostHog sharing POST error', { status: createRes.status, body: createErrorText })
         return apiError('EXTERNAL_API_ERROR', 'Failed to enable sharing for this recording', 502)
       }
 
@@ -103,7 +107,7 @@ export async function POST(request: Request) {
     const shareData = await enableRes.json()
 
     if (!shareData.access_token) {
-      console.error('No access_token in PostHog response:', shareData)
+      log.error('No access_token in PostHog response', shareData)
       return apiError('EXTERNAL_API_ERROR', 'PostHog did not return an access token', 502)
     }
 
@@ -113,7 +117,7 @@ export async function POST(request: Request) {
       cached: false,
     })
   } catch (error) {
-    console.error('Error enabling PostHog sharing:', error)
+    log.error('Error enabling PostHog sharing', error)
     return apiError('INTERNAL_ERROR', 'Failed to enable sharing', 500)
   }
 }
