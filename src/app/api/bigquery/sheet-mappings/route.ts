@@ -5,7 +5,7 @@
  * partner mapping suggestions. POST applies all ready suggestions.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
@@ -24,7 +24,7 @@ const ApplySchema = z.object({
   dry_run: z.boolean().optional().default(false),
 })
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole('admin')
   if (!auth.authenticated) {
     return auth.response
@@ -60,7 +60,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole('admin')
   if (!auth.authenticated) {
     return auth.response

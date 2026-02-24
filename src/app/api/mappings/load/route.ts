@@ -10,7 +10,7 @@ const logger = createLogger('api:mappings:load')
 const supabase = getAdminClient()
 
 // GET - Load field mappings (admin only)
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -77,17 +77,17 @@ export async function GET(request: NextRequest) {
       : [{ data: [] }, { data: [] }]
 
     // Build O(1) lookup maps
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mappingsByTab = new Map<string, any[]>()
-    for (const m of allMappingsResult.data || []) {
+    const mappingRows = allMappingsResult.data || []
+    const mappingsByTab = new Map<string, typeof mappingRows>()
+    for (const m of mappingRows) {
       const list = mappingsByTab.get(m.tab_mapping_id)
       if (list) list.push(m)
       else mappingsByTab.set(m.tab_mapping_id, [m])
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const patternsByTab = new Map<string, any[]>()
-    for (const p of allPatternsResult.data || []) {
+    const patternRows = allPatternsResult.data || []
+    const patternsByTab = new Map<string, typeof patternRows>()
+    for (const p of patternRows) {
       const list = patternsByTab.get(p.tab_mapping_id)
       if (list) list.push(p)
       else patternsByTab.set(p.tab_mapping_id, [p])

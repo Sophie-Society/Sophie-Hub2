@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -46,7 +47,7 @@ interface RouteContext {
  *
  * Returns assigned modules for a view ordered by sort_order.
  */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(_request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -114,7 +115,7 @@ export async function GET(_request: Request, context: RouteContext) {
  *
  * Assign a module to a view.
  */
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -195,7 +196,7 @@ export async function POST(request: Request, context: RouteContext) {
  *
  * Remove a module assignment from a view.
  */
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext): Promise<NextResponse | Response> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -257,7 +258,7 @@ export async function DELETE(request: Request, context: RouteContext) {
  *
  * Update module assignment layout metadata for module-as-widget composition.
  */
-export async function PATCH(request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

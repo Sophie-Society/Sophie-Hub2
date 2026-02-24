@@ -1,6 +1,7 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
+import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { z } from 'zod'
 import { createLogger } from '@/lib/logger'
 
@@ -39,7 +40,7 @@ const QuerySchema = z.object({
  *   }
  * }
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     // Validate params
     const validation = QuerySchema.safeParse(params)
     if (!validation.success) {
-      return apiError(ErrorCodes.VALIDATION_ERROR, validation.error.message, 400)
+      return apiValidationError(validation.error)
     }
 
     const { data_source_id, tab_mapping_id, status, limit, offset } = validation.data

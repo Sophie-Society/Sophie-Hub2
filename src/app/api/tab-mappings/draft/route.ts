@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, apiError, ApiErrors } from '@/lib/api/response'
@@ -10,7 +11,7 @@ const log = createLogger('api:tab-mappings:draft')
 const supabase = getAdminClient()
 
 // GET - Load draft state for a tab (admin only)
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
 }
 
 // POST - Save draft state for a tab (admin only)
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -114,7 +115,7 @@ export async function POST(request: Request) {
 }
 
 // DELETE - Clear draft state for a tab (admin only)
-export async function DELETE(request: Request) {
+export async function DELETE(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 

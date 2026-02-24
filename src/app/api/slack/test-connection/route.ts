@@ -4,6 +4,7 @@
  * Verify Slack bot token and return workspace info.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -12,7 +13,7 @@ import { createLogger } from '@/lib/logger'
 
 const logger = createLogger('api:slack:test-connection')
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -34,6 +35,6 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   return ApiErrors.notFound('Use POST method')
 }

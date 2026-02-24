@@ -16,7 +16,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:slack:sync:start')
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

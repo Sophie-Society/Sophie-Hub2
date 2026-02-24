@@ -1,5 +1,6 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
-import { apiSuccess, apiError, ApiErrors, ErrorCodes } from '@/lib/api/response'
+import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { findStaff, type StaffRecord } from '@/lib/repositories/staff.repository'
 import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
@@ -108,7 +109,7 @@ const QuerySchema = z.object({
  * - limit: number (1-100, default 50)
  * - offset: number (default 0)
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -128,7 +129,7 @@ export async function GET(request: Request) {
 
     const validation = QuerySchema.safeParse(params)
     if (!validation.success) {
-      return apiError(ErrorCodes.VALIDATION_ERROR, validation.error.message, 400)
+      return apiValidationError(validation.error)
     }
 
     const { search, status, role, department, sort, order, inactive_days, limit, offset } = validation.data

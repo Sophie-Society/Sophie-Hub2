@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { createLogger } from '@/lib/logger'
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,8 @@ import {
 import { FeedbackKanban } from '@/components/feedback/feedback-kanban'
 import { AdminComments } from '@/components/feedback/admin-comments'
 import { SessionReplayEmbed } from '@/components/feedback/session-replay-embed'
+
+const log = createLogger('admin-feedback-page')
 
 type FeedbackType = 'bug' | 'feature' | 'question'
 type FeedbackStatus = 'new' | 'reviewed' | 'in_progress' | 'resolved' | 'wont_fix'
@@ -979,7 +982,7 @@ function FeedbackDetailDialog({
       onRefresh()
       onClose()
     } catch (error) {
-      console.error('Failed to update status:', error)
+      log.error('Failed to update status:', error)
       toast.error('Failed to update status')
     } finally {
       setUpdating(false)
@@ -1018,7 +1021,7 @@ function FeedbackDetailDialog({
 
       toast.success('AI analysis complete')
     } catch (error) {
-      console.error('AI analysis failed:', error)
+      log.error('AI analysis failed:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to analyze')
     } finally {
       setAnalyzing(false)

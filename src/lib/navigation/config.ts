@@ -18,6 +18,7 @@ import {
   Lightbulb,
   Blocks,
   Eye,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 import { type Role, ROLES, isRoleAtLeast } from '@/lib/auth/roles'
@@ -65,6 +66,7 @@ export const navigation: NavSection[] = [
       { name: 'Feedback Triage', href: '/admin/feedback', icon: MessageSquare },
       { name: 'Data Enrichment', href: '/admin/data-enrichment', icon: Database, highlight: true },
       { name: 'Change Approval', href: '/admin/change-approval', icon: GitPullRequest },
+      { name: 'Reporting Sync', href: '/admin/reporting-sync', icon: RefreshCw },
     ],
   },
 ]

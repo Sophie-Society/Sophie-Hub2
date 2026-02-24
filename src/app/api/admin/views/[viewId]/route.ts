@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -25,7 +26,7 @@ interface RouteContext {
  * GET /api/admin/views/[viewId]
  * Get a single view profile with audience rules and module assignments.
  */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(_request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -57,7 +58,7 @@ export async function GET(_request: Request, context: RouteContext) {
  * PATCH /api/admin/views/[viewId]
  * Update a view profile.
  */
-export async function PATCH(request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -99,7 +100,7 @@ export async function PATCH(request: Request, context: RouteContext) {
  * DELETE /api/admin/views/[viewId]
  * Delete a view profile. Cascades to rules and module assignments.
  */
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(_request: Request, context: RouteContext): Promise<NextResponse | Response> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

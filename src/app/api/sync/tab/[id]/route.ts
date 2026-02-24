@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requirePermission } from '@/lib/auth/api-auth'
@@ -50,7 +51,7 @@ const SyncOptionsSchema = z.object({
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse | Response> {
   // Require data-enrichment:write permission
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response

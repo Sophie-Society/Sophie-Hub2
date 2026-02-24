@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
@@ -29,7 +30,7 @@ interface RepairResult {
  *
  * This is a one-time fix for data that was saved before proper validation.
  */
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -87,13 +88,17 @@ export async function POST() {
 
     if (!brokenMappings || brokenMappings.length === 0) {
       // Check if there are any mappings at all to verify query is correct
-      const { count } = await supabase
+      const { count, error: countError } = await supabase
         .from('column_mappings')
         .select('*', { count: 'exact', head: true })
 
+      if (countError) {
+        log.error('Error counting column_mappings', countError)
+      }
+
       return apiSuccess({
         message: 'No broken mappings found',
-        totalMappings: count,
+        totalMappings: count ?? 0,
         repaired: 0,
       })
     }
@@ -161,7 +166,9 @@ export async function POST() {
         const details: string[] = []
         let repairedCount = 0
 
-        // Update each broken mapping
+        // Collect batch updates to avoid N+1 sequential queries
+        const batchUpdates: { id: string; source_column: string; target_field: string | null }[] = []
+
         for (const mapping of mappings) {
           const colIndex = mapping.source_column_index
           if (colIndex === null || colIndex === undefined) {
@@ -175,18 +182,33 @@ export async function POST() {
             continue
           }
 
-          // Update the column_mapping with the correct source_column
-          const { error: updateError } = await supabase
-            .from('column_mappings')
-            .update({ source_column: header })
-            .eq('id', mapping.id)
+          batchUpdates.push({ id: mapping.id, source_column: header, target_field: mapping.target_field })
+        }
 
-          if (updateError) {
-            details.push(`Column ${mapping.target_field}: update failed - ${updateError.message}`)
-          } else {
-            details.push(`Column ${mapping.target_field}: repaired → "${header}"`)
+        // Execute updates in parallel (batched, not sequential N+1)
+        const updateResults = await Promise.allSettled(
+          batchUpdates.map(({ id, source_column }) =>
+            supabase
+              .from('column_mappings')
+              .update({ source_column })
+              .eq('id', id)
+              .select('id')
+              .single()
+          )
+        )
+
+        for (let i = 0; i < updateResults.length; i++) {
+          const result = updateResults[i]
+          const { target_field, source_column } = batchUpdates[i]
+          if (result.status === 'fulfilled' && !result.value.error) {
+            details.push(`Column ${target_field}: repaired → "${source_column}"`)
             repairedCount++
             totalRepaired++
+          } else {
+            const errMsg = result.status === 'rejected'
+              ? String(result.reason)
+              : result.value.error?.message ?? 'Unknown error'
+            details.push(`Column ${target_field}: update failed - ${errMsg}`)
           }
         }
 
@@ -228,7 +250,7 @@ export async function POST() {
  *
  * Check how many mappings need repair without fixing them.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 
@@ -265,13 +287,21 @@ export async function GET() {
     }
 
     // Get total counts for context
-    const { count: totalMappings } = await supabase
+    const { count: totalMappings, error: mappingCountErr } = await supabase
       .from('column_mappings')
       .select('*', { count: 'exact', head: true })
 
-    const { count: totalTabs } = await supabase
+    if (mappingCountErr) {
+      log.error('Error counting column_mappings', mappingCountErr)
+    }
+
+    const { count: totalTabs, error: tabCountErr } = await supabase
       .from('tab_mappings')
       .select('*', { count: 'exact', head: true })
+
+    if (tabCountErr) {
+      log.error('Error counting tab_mappings', tabCountErr)
+    }
 
     // Group broken mappings by sheet for readability
     const bySheet = new Map<string, { tabName: string; count: number; fields: string[] }>()

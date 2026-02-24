@@ -9,7 +9,7 @@ const log = createLogger('api:field-tags')
 const supabase = getAdminClient()
 
 // GET /api/field-tags - Get all available field tags
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

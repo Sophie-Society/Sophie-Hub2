@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -10,7 +11,7 @@ const log = createLogger('api:admin:status-mappings:unmapped')
  * GET /api/admin/status-mappings/unmapped
  * Discovers status strings in partner data that don't match any mapping (admin only)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 

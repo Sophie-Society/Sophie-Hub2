@@ -8,6 +8,7 @@
  * Server-side cache: BigQuery queries are slow (~15s), so we cache for 10 min.
  */
 
+import { NextResponse } from 'next/server'
 import { bigQueryConnector } from '@/lib/connectors/bigquery'
 import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -22,7 +23,7 @@ const log = createLogger('api:bigquery:client-names')
 
 const supabase = getAdminClient()
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')

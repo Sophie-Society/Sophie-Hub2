@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -30,7 +31,7 @@ const PatchTabMappingSchema = z.object({
 })
 
 // POST - Create a new tab mapping (admin only)
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -97,7 +98,7 @@ export async function POST(request: Request) {
 }
 
 // PATCH - Update a tab mapping (e.g., save AI summary)
-export async function PATCH(request: Request) {
+export async function PATCH(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 

@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -25,7 +26,7 @@ interface RouteContext {
  * PUT /api/admin/status-mappings/[id]
  * Updates a status color mapping (admin only)
  */
-export async function PUT(request: Request, context: RouteContext) {
+export async function PUT(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -119,7 +120,7 @@ export async function PUT(request: Request, context: RouteContext) {
  * DELETE /api/admin/status-mappings/[id]
  * Deletes a status color mapping (admin only, not system defaults)
  */
-export async function DELETE(request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 

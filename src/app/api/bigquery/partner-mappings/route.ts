@@ -4,7 +4,7 @@
  * Manages BigQuery client identifier → partner mappings in entity_external_ids table.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -31,7 +31,7 @@ const CreateMappingSchema = z.object({
 /**
  * GET - Fetch all BigQuery partner mappings with partner details
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')
@@ -105,7 +105,7 @@ export async function GET() {
 /**
  * POST - Create or update a BigQuery partner mapping
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE - Remove a BigQuery partner mapping
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
     // Require admin role (Data Enrichment is admin-only)
     const authResult = await requireRole('admin')

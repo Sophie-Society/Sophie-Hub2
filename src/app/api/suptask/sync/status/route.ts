@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -11,7 +12,7 @@ const supabase = getAdminClient()
  * Returns the most recent sync runs and overall ticket stats.
  * Admin only.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

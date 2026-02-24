@@ -32,9 +32,11 @@ export interface PartnerQueryParams {
 export async function findPartners(
   params: PartnerQueryParams
 ): Promise<PartnerRecord[]> {
+  // Full row needed: source_data required for computed status derivation
   let query = supabase
     .from('partners')
     .select('*')
+    .is('deleted_at', null)
 
   if (params.search) {
     const escaped = escapePostgrestValue(params.search)
@@ -74,6 +76,7 @@ export async function findAssignmentsByPartnerIds(
     .in('partner_id', partnerIds)
     .in('assignment_role', ['pod_leader', 'sales_rep'])
     .is('unassigned_at', null)
+    .order('assigned_at', { ascending: false })
 
   if (error) {
     throw new Error(`Failed to fetch assignments: ${error.message}`)
@@ -364,6 +367,8 @@ export async function updatePartnerTypeFields(
       partner_type_computed_at: computedAt,
     })
     .eq('id', id)
+    .select('id')
+    .single()
 
   if (error) {
     throw new Error(`Failed to update partner type fields for ${id}: ${error.message}`)

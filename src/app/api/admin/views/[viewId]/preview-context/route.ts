@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { isTrueAdmin } from '@/lib/auth/admin-access'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -17,7 +17,7 @@ import { apiSuccess, ApiErrors } from '@/lib/api/response'
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ viewId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

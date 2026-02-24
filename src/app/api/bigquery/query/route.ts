@@ -10,7 +10,7 @@
  * - Table queries (raw rows with column selection)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
@@ -189,7 +189,7 @@ function extractMarketplaceCodeFromMapping(mapping: {
 // Route handler
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

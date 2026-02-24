@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
@@ -101,7 +102,7 @@ function computeNextTags(
  * Bulk update staff lifecycle metadata (role/status/status_tags).
  * Admin-only endpoint.
  */
-export async function PATCH(request: Request) {
+export async function PATCH(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
   if (auth.user.role !== 'admin') {

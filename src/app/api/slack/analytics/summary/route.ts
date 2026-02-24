@@ -7,7 +7,7 @@
  * Default: last 30 days.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -23,7 +23,7 @@ const QuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(365).optional(),
 })
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

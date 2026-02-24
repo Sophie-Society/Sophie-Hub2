@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -23,7 +24,7 @@ interface RouteContext {
  * PATCH /api/admin/views/[viewId]/rules/[ruleId]
  * Update an audience rule (priority, is_active).
  */
-export async function PATCH(request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -74,7 +75,7 @@ export async function PATCH(request: Request, context: RouteContext) {
  * DELETE /api/admin/views/[viewId]/rules/[ruleId]
  * Remove an audience rule.
  */
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(_request: Request, context: RouteContext): Promise<NextResponse | Response> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

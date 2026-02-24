@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -16,7 +16,7 @@ const supabase = getAdminClient()
 
 // POST - Save field mappings (admin only)
 // Supports both legacy format { spreadsheet_id } and new format { type, connection_config }
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 

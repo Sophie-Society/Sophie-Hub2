@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -23,7 +24,7 @@ const supabase = getAdminClient()
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 

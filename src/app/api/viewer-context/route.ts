@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { isTrueAdmin } from '@/lib/auth/admin-access'
@@ -40,7 +41,7 @@ const supabase = getAdminClient()
 // GET /api/viewer-context
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -64,7 +65,7 @@ export async function GET() {
 // POST /api/viewer-context
 // ---------------------------------------------------------------------------
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse | Response> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -181,7 +182,7 @@ export async function POST(request: Request) {
 // DELETE /api/viewer-context
 // ---------------------------------------------------------------------------
 
-export async function DELETE() {
+export async function DELETE(): Promise<NextResponse | Response> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

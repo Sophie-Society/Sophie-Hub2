@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/slack-clickup-sync",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/reporting-sync",
+      "schedule": "0 2 * * *"
     }
   ]
 }

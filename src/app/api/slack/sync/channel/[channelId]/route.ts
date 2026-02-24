@@ -6,7 +6,7 @@
  * forward sync, and backfill for one channel.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiError, ApiErrors } from '@/lib/api/response'
@@ -18,7 +18,7 @@ const log = createLogger('api:slack:sync:channel')
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ channelId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import {
@@ -24,7 +25,7 @@ const FeedbackSchema = z.object({
  * POST /api/feedback
  * Submit new feedback (bug, feature request, or question)
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
  * - sort: votes | recent (default: recent)
  * - roadmap: true - show only roadmap items (reviewed, in_progress, resolved)
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

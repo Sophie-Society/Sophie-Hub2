@@ -49,7 +49,7 @@ export const BIGQUERY = {
     SALES: 'pbi_sellingpartner_sales_materialized',
     REFUNDS: 'pbi_sellingpartner_refunds_materialized',
     PRODUCTS: 'pbi_dim_products_materialized',
-    MATCH: 'pbi_match_v2_materialized',
+    MATCH: 'pbi_match_unified_materialized_v2',
     SNS_PERFORMANCE: 'pbi_sns_performance_materialized',
     SNS_FORECAST: 'pbi_sns_forecast_materialized',
     INVENTORY: 'pbi_inventory_materialized',

@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -11,7 +12,7 @@ const supabase = getAdminClient()
 
 // POST - Confirm header row selection for a tab (admin only)
 // Creates tab_mapping if it doesn't exist, or updates header_confirmed = true
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 

@@ -7,7 +7,7 @@
  * Admin-only. Cached for 1 hour.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -89,7 +89,7 @@ function periodToDays(period: Period): number {
 const detailCache = new Map<string, { data: SourceDetailEntry[]; timestamp: number }>()
 const CACHE_TTL = 60 * 60 * 1000
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

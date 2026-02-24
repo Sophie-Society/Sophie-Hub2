@@ -8,14 +8,14 @@
  * Auth: CRON_SECRET bearer token
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response'
 import { runPartnerTypeReconciliation } from '@/lib/partners/partner-type-reconciliation'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:cron:partner-type-reconciliation')
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
     log.error('Partner type reconciliation cron: CRON_SECRET is not configured')

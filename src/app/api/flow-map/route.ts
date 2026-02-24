@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -21,7 +22,7 @@ const ALL_ENTITIES: EntityType[] = ['partners', 'staff', 'asins']
  * 2. Query column_mappings for those tabs
  * 3. Merge with entity field registry in-memory
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 

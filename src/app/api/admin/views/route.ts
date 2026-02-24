@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -21,7 +22,7 @@ const CreateViewSchema = z.object({
  * GET /api/admin/views
  * List all view profiles with audience rule counts.
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
  * POST /api/admin/views
  * Create a new view profile.
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

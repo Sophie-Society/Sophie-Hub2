@@ -12,7 +12,7 @@
  *   limit - max rows to return (default: 100)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -79,7 +79,7 @@ function extractMarketplaceCodeFromMapping(mapping: {
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   try {
     const auth = await requireAuth()
     if (!auth.authenticated) {

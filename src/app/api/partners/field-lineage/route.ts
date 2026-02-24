@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -21,7 +22,7 @@ export interface FieldLineageInfo {
  * Returns the mapping lineage for all partner fields.
  * Shows which sheet, tab, and column each field was mapped from.
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

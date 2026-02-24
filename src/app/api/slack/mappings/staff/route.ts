@@ -5,7 +5,7 @@
  * Source: 'slack_user', entity_type: 'staff'
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -26,7 +26,7 @@ const CreateMappingSchema = z.object({
 /**
  * GET — Fetch all staff ↔ Slack user mappings
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -80,7 +80,7 @@ export async function GET() {
 /**
  * POST — Create or update a staff ↔ Slack user mapping
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE — Remove a staff ↔ Slack user mapping
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

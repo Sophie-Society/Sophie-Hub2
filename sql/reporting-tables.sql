@@ -508,6 +508,13 @@ CREATE TABLE IF NOT EXISTS rpt_all_metrics_dashboard (
 -- 4. FOREIGN KEY RELATIONSHIPS (matching Power BI model)
 -- =============================================================================
 
+-- Drop existing constraints first (idempotent re-runs)
+ALTER TABLE rpt_bridge_product_client DROP CONSTRAINT IF EXISTS fk_bridge_client;
+ALTER TABLE rpt_refunds DROP CONSTRAINT IF EXISTS fk_refunds_client;
+ALTER TABLE rpt_dim_products DROP CONSTRAINT IF EXISTS fk_dim_products_client;
+ALTER TABLE rpt_dim_asins DROP CONSTRAINT IF EXISTS fk_dim_asins_client;
+ALTER TABLE rpt_settlement DROP CONSTRAINT IF EXISTS fk_settlement_subcategory;
+
 -- Bridge → DimClients
 ALTER TABLE rpt_bridge_product_client
   ADD CONSTRAINT fk_bridge_client

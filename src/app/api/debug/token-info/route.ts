@@ -1,11 +1,17 @@
 import { getServerSession } from 'next-auth'
 import { NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth/config'
+import { requireRole } from '@/lib/auth/api-auth'
+import { ROLES } from '@/lib/auth/roles'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:debug:token-info')
 
 export async function GET(): Promise<NextResponse> {
+  // Admin-only: debug endpoints must not be accessible to regular users
+  const auth = await requireRole(ROLES.ADMIN)
+  if (!auth.authenticated) return auth.response as NextResponse
+
   try {
     const session = await getServerSession(authOptions)
 

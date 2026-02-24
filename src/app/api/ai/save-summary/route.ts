@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -34,7 +34,7 @@ const SaveSummarySchema = z.object({
 // POST /api/ai/save-summary
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
 // GET /api/ai/save-summary - Load existing summary
 // =============================================================================
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 

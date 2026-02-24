@@ -13,7 +13,7 @@
  * @see src/docs/SLACK-ROLLOUT-PLAN.md §2.4 for architecture
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { processChunk } from '@/lib/slack/sync'
@@ -21,7 +21,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:cron:slack-sync')
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
     log.error('Slack sync cron: CRON_SECRET is not configured')

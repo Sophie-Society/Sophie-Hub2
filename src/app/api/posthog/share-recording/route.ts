@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { getPostHogApiKey } from '@/lib/settings'
@@ -18,7 +19,7 @@ const POSTHOG_HOST = 'https://us.posthog.com'
  * Body:
  * - sessionId: The PostHog session ID
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

@@ -12,7 +12,7 @@
  * - Raw table data
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
@@ -115,7 +115,7 @@ function getCached(key: string): unknown | null {
   return entry.data
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -36,7 +36,7 @@ interface ImplementationSuggestion {
  * POST /api/ai/suggest-implementation
  * Generate implementation suggestions for a feature request
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth check - admin only
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {

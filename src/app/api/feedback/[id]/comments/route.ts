@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, apiError, apiValidationError } from '@/lib/api/response'
@@ -37,7 +37,7 @@ const CommentSchema = z.object({
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) {
     return auth.response
@@ -100,7 +100,7 @@ export async function GET(
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) {
     return auth.response
@@ -187,7 +187,7 @@ export async function DELETE(
   request: NextRequest,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

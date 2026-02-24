@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -23,7 +24,7 @@ const CreateMappingSchema = z.object({
  * GET /api/admin/status-mappings
  * Returns all status color mappings (admin only)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 
@@ -64,7 +65,7 @@ export async function GET() {
  * POST /api/admin/status-mappings
  * Creates a new status color mapping (admin only)
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const authResult = await requireRole(ROLES.ADMIN)
   if (!authResult.authenticated) return authResult.response
 

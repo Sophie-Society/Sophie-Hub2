@@ -5,6 +5,7 @@
  * POST: Create a new dashboard (admin only)
  */
 
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -22,7 +23,7 @@ const ListQuerySchema = z.object({
   is_template: z.enum(['true', 'false']).optional(),
 })
 
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -105,7 +106,7 @@ const CreateDashboardSchema = z.object({
   date_range_default: z.enum(['7d', '30d', '90d', 'custom']).optional().default('30d'),
 })
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

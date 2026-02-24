@@ -11,6 +11,7 @@
  * - phone: only set if currently empty in DB
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -100,7 +101,7 @@ async function resolveEnrichConfig(request: Request): Promise<{
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

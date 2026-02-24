@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { getMappingAssistant, type ColumnInput, type MappingContext } from '@/lib/ai/mapping-sdk'
@@ -63,7 +63,7 @@ const AI_RATE_LIMIT = {
  *   }
  * }
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse | Response> {
   // Require data-enrichment:write permission
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response

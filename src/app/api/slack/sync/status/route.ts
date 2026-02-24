@@ -5,6 +5,7 @@
  * Returns the most recent sync run record and channel-level details.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -13,7 +14,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:slack:sync:status')
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

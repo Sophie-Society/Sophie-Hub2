@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { audit, type AuditAction, type AuditResourceType } from '@/lib/audit'
@@ -19,7 +19,7 @@ const log = createLogger('api:audit')
  * - user_id: Filter by user
  * - limit: Number of results (default 50, max 200)
  */
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:read')
   if (!auth.authenticated) return auth.response
 

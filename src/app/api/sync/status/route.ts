@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -14,7 +15,7 @@ const supabase = getAdminClient()
  * Used by the UI polling mechanism to detect when syncs complete
  * even if the original fetch response is lost (long-running requests).
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

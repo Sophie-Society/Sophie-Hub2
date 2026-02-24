@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -120,7 +120,7 @@ function extractFilePathsFromStack(stack?: string): string[] {
  * POST /api/ai/analyze-bug
  * Analyze a bug report using AI with PostHog session data
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // Auth check - admin only
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {

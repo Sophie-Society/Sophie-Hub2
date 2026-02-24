@@ -4,6 +4,7 @@
  * Return current sync state: snapshot stats, last sync time, drift summary.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -24,7 +25,7 @@ function isQueueSchemaError(error: unknown): boolean {
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

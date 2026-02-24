@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { isTrueAdmin } from '@/lib/auth/admin-access'
@@ -27,7 +28,7 @@ interface RouteContext {
  * Batch-update sort_order for module assignments in a view.
  * HR-7: isTrueAdmin gate (excludes operations_admin).
  */
-export async function PATCH(request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

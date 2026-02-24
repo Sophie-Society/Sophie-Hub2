@@ -1,7 +1,8 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
-import { apiError, apiSuccess, ApiErrors } from '@/lib/api/response'
+import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { createLogger } from '@/lib/logger'
 const log = createLogger('api:admin:partners:partner-type-reconciliation')
 
@@ -37,7 +38,7 @@ const ReconcileBodySchema = z.object({
  * Returns reconciliation report comparing runtime-computed partner type
  * against persisted taxonomy columns.
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     })
 
     if (!validation.success) {
-      return apiError('VALIDATION_ERROR', validation.error.message, 400)
+      return apiValidationError(validation.error)
     }
 
     const { limit, offset, search, mismatch_only, drift_only } = validation.data
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
  * Recomputes and persists partner-type taxonomy fields.
  * Defaults to dry_run=true for safety.
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}))
     const validation = ReconcileBodySchema.safeParse(body)
     if (!validation.success) {
-      return apiError('VALIDATION_ERROR', validation.error.message, 400)
+      return apiValidationError(validation.error)
     }
 
     const { dry_run, limit, mismatch_only, drift_only } = validation.data

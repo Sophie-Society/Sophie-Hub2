@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { apiSuccess, apiValidationError, ApiErrors } from '@/lib/api/response'
@@ -20,7 +21,7 @@ const StatusUpdateSchema = z.object({
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

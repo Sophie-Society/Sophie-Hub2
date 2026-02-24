@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors, apiError, ErrorCodes } from '@/lib/api/response'
 import { deduplicateLineage } from '@/types/lineage'
@@ -43,7 +44,7 @@ const StaffUpdateSchema = z.object({
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -85,7 +86,7 @@ export async function GET(
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
   if (auth.user.role !== 'admin') {

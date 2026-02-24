@@ -8,14 +8,14 @@
  * Auth: CRON_SECRET bearer token (Vercel sets this automatically)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { apiSuccess, apiError } from '@/lib/api/response'
 import { computeDailyRollingWindow } from '@/lib/slack/analytics'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:cron:slack-analytics')
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
     log.error('Slack analytics cron: CRON_SECRET is not configured')

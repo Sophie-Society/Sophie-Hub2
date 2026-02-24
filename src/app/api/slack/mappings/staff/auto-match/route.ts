@@ -5,6 +5,7 @@
  * Updates entity_external_ids and staff.slack_id.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -16,7 +17,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:slack:mappings:staff:auto-match')
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

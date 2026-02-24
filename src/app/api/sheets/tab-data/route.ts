@@ -15,7 +15,7 @@ const TabDataQuerySchema = z.object({
   headerRow: z.coerce.number().int().min(0).default(0),
 })
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions)
 

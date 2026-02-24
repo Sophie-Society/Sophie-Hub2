@@ -5,6 +5,7 @@
  * Returns channels enriched with partner mapping info from entity_external_ids.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -24,7 +25,7 @@ function detectChannelType(channelName: string): SlackChannelType {
   return 'partner_facing'
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { apiSuccess, apiError } from '@/lib/api/response'
@@ -148,7 +149,7 @@ function getLatestWeeklyStatus(
  * GET /api/stats/health-distribution
  * Returns partner count distribution across health buckets
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authResult = await requireAuth()
   if (!authResult.authenticated) return authResult.response
 

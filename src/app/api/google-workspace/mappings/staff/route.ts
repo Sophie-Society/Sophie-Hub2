@@ -8,7 +8,7 @@
  * - DELETE: Remove a mapping
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -27,7 +27,7 @@ import {
 // GET — List all staff-Google Workspace mappings
 // =============================================================================
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -93,7 +93,7 @@ const CreateMappingSchema = z.object({
   is_admin: z.boolean().optional(),
 })
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response
@@ -162,7 +162,7 @@ const DeleteMappingSchema = z.object({
   google_user_id: z.string().min(1, 'google_user_id is required'),
 })
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

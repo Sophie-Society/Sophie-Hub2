@@ -6,6 +6,7 @@
  * DELETE: Delete a section (widgets cascade)
  */
 
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireTrueAdmin } from '@/lib/auth/api-auth'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -49,7 +50,7 @@ async function validateSectionInView(
   return section
 }
 
-export async function PATCH(request: Request, context: RouteContext) {
+export async function PATCH(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireTrueAdmin()
   if (!auth.authenticated) return auth.response
 
@@ -81,7 +82,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(_request: Request, context: RouteContext): Promise<NextResponse | Response> {
   const auth = await requireTrueAdmin()
   if (!auth.authenticated) return auth.response
 

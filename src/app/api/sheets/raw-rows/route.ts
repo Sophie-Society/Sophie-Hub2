@@ -74,7 +74,7 @@ function getGoogleApiErrorResponse(error: unknown): { status: number; message: s
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const session = await getServerSession(authOptions)
 

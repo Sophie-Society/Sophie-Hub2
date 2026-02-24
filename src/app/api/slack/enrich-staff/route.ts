@@ -6,6 +6,7 @@
  * Updates the staff table with enriched data.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -15,7 +16,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('api:slack:enrich-staff')
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

@@ -5,7 +5,7 @@
  * Steps: validate input -> fetch BigQuery data -> send to Anthropic API -> return summary.
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { BigQuery } from '@google-cloud/bigquery'
 import Anthropic from '@anthropic-ai/sdk'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -152,7 +152,7 @@ function getDateFilter(dateRange: z.infer<typeof DateRangeSchema>): { startDate?
   return { startDate: undefined, endDate: undefined }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

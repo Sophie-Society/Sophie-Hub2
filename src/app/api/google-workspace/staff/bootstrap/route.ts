@@ -8,6 +8,7 @@
  * Excludes shared inboxes and suspended/deleted directory accounts.
  */
 
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
@@ -60,7 +61,7 @@ function nameFromEmail(email: string): string {
     .join(' ') || email
 }
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

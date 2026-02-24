@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requirePermission } from '@/lib/auth/api-auth'
@@ -39,7 +40,7 @@ function isScopedStaffAutoMatchTab(tabName: string): boolean {
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 

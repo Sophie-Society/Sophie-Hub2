@@ -6,7 +6,7 @@
  * DELETE: Delete dashboard (admin only)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireAuth, requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -19,7 +19,7 @@ const supabase = getAdminClient()
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -86,7 +86,7 @@ const UpdateDashboardSchema = z.object({
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -119,7 +119,7 @@ export async function PATCH(
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

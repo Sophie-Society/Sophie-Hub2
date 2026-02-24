@@ -6,7 +6,7 @@ const STAGING_PASSWORD = process.env.STAGING_PASSWORD || ''
 const COOKIE_NAME = 'sophie-hub-access'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   // If no password is configured, allow access
   if (!STAGING_PASSWORD) {
     return NextResponse.json({ success: true })

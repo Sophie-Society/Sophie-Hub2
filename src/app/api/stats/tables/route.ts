@@ -96,7 +96,7 @@ function isActiveStatus(status: string | null): boolean {
   return false
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 
@@ -104,8 +104,12 @@ export async function GET() {
     // Fetch all partners page-by-page to avoid API max row caps (often 1000/request).
     const [partnersResult, staffResult] = await Promise.all([
       fetchAllPartnersForStats(),
-      supabase.from('staff').select('*', { count: 'exact', head: true }),
+      supabase.from('staff').select('id', { count: 'exact', head: true }),
     ])
+
+    if (staffResult.error) {
+      log.error('Error counting staff', staffResult.error)
+    }
 
     // Calculate active partners (healthy, onboarding, at risk, offboarding - excludes churned/paused)
     let totalPartners = 0

@@ -6,7 +6,7 @@
  * DELETE: Remove a widget (admin only)
  */
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -48,7 +48,7 @@ const CreateWidgetSchema = z.object({
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -131,7 +131,7 @@ const UpdateWidgetSchema = z.object({
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -180,7 +180,7 @@ const DeleteWidgetSchema = z.object({
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ dashboardId: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

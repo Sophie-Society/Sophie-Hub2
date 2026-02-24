@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
@@ -44,7 +45,7 @@ function asNullableString(value: unknown): string | null {
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/api-auth'
 import { isTrueAdmin } from '@/lib/auth/admin-access'
@@ -23,7 +24,7 @@ const CreateSessionSchema = z.object({
 // POST /api/admin/views/preview-session
 // ---------------------------------------------------------------------------
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

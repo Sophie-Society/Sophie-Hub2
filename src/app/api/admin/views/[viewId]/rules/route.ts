@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { getAdminClient } from '@/lib/supabase/admin'
@@ -38,7 +39,7 @@ interface RouteContext {
  * GET /api/admin/views/[viewId]/rules
  * List audience rules for a view, ordered by tier ASC, priority ASC.
  */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(_request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 
@@ -77,7 +78,7 @@ export async function GET(_request: Request, context: RouteContext) {
  * POST /api/admin/views/[viewId]/rules
  * Add an audience rule. Tier is auto-derived from target_type.
  */
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

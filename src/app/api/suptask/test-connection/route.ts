@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
 import { testConnection, sanitizeError } from '@/lib/suptask/client'
@@ -9,7 +10,7 @@ import { apiSuccess, apiError } from '@/lib/api/response'
  * Tests connectivity to the SupTask API using configured env credentials.
  * Admin only.
  */
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

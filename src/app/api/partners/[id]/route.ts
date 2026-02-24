@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth, canAccessPartner } from '@/lib/auth/api-auth'
 import { apiSuccess, ApiErrors } from '@/lib/api/response'
 import { deduplicateLineage } from '@/types/lineage'
@@ -22,7 +23,7 @@ const log = createLogger('api:partners')
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const auth = await requireAuth()
   if (!auth.authenticated) return auth.response
 

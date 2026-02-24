@@ -7,6 +7,7 @@
  * - shared_account -> force shared inbox/account
  */
 
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth/api-auth'
 import { ROLES } from '@/lib/auth/roles'
@@ -28,7 +29,7 @@ function isSchemaError(error: unknown): boolean {
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) return auth.response
 

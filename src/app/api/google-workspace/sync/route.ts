@@ -31,7 +31,7 @@ function isSnapshotSchemaError(error: unknown): boolean {
   return code === '42P01' || code === '42703' || code === 'PGRST204' || code === 'PGRST205'
 }
 
-export async function POST() {
+export async function POST(): Promise<NextResponse> {
   const auth = await requireRole(ROLES.ADMIN)
   if (!auth.authenticated) {
     return auth.response

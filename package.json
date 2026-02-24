@@ -42,7 +42,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "dialkit": "^0.2.0",
+    "dialkit": "^0.2.2",
     "framer-motion": "^12.26.2",
     "googleapis": "^170.0.0",
     "html2canvas": "^1.4.1",

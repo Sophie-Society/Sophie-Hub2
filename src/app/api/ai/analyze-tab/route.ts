@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/api-auth'
 import { apiSuccess, apiError, apiValidationError, ApiErrors } from '@/lib/api/response'
 import { hasSystemSetting, getAnthropicApiKey } from '@/lib/settings'
@@ -106,7 +106,7 @@ const ANALYZE_TAB_TOOL: Anthropic.Tool = {
 // POST /api/ai/analyze-tab
 // =============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse | Response> {
   const auth = await requirePermission('data-enrichment:write')
   if (!auth.authenticated) return auth.response
 
