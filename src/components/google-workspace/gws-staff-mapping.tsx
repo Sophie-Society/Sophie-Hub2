@@ -20,6 +20,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { createLogger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -75,6 +76,7 @@ interface StaffMember {
 
 type FilterType = 'all' | 'mapped' | 'unmapped' | 'suspended' | 'shared' | 'skipped'
 
+const log = createLogger('gws-staff-mapping')
 const easeOut: [number, number, number, number] = [0.22, 1, 0.36, 1]
 const PAGE_SIZE = 30
 const REQUEST_TIMEOUT_MS = 30000
@@ -213,7 +215,7 @@ export function GWSStaffMapping() {
         setDirectoryUsers(enrichedUsers)
         setError(null)
       } catch (err) {
-        console.error('Error fetching directory users:', err)
+        log.error('Error fetching directory users:', err)
         setError('Failed to load directory users. Try Refresh Directory.')
       } finally {
         setIsLoadingUsers(false)
@@ -246,7 +248,7 @@ export function GWSStaffMapping() {
         }
 
         if (pageCount === MAX_PAGINATION_PAGES) {
-          console.warn('Stopped staff pagination at safety cap', { pageCount, offset })
+          log.warn('Stopped staff pagination at safety cap', { pageCount, offset })
         }
 
         setStaffMembers(
@@ -258,7 +260,7 @@ export function GWSStaffMapping() {
           }))
         )
       } catch (err) {
-        console.error('Error fetching staff:', err)
+        log.error('Error fetching staff:', err)
         toast.error('Failed to load staff list')
       } finally {
         setIsLoadingStaff(false)
@@ -520,7 +522,7 @@ export function GWSStaffMapping() {
         toast.error(result?.error || 'Sync failed')
       }
     } catch (err) {
-      console.error('Sync error:', err)
+      log.error('Sync error:', err)
       toast.error('Directory sync failed')
     } finally {
       setIsSyncing(false)
@@ -594,7 +596,7 @@ export function GWSStaffMapping() {
       }
       await refreshSkippedApprovals()
     } catch (err) {
-      console.error('Auto-match error:', err)
+      log.error('Auto-match error:', err)
       toast.error('Auto-match failed')
     } finally {
       setIsAutoMatching(false)
@@ -687,7 +689,7 @@ export function GWSStaffMapping() {
       }
       await refreshSkippedApprovals()
     } catch (err) {
-      console.error('Staff bootstrap error:', err)
+      log.error('Staff bootstrap error:', err)
       toast.error(err instanceof Error ? err.message : 'Failed to seed staff from Google Workspace')
     } finally {
       setIsBootstrappingStaff(false)
@@ -723,7 +725,7 @@ export function GWSStaffMapping() {
       )
       setIsEnrichSettingsOpen(false)
     } catch (err) {
-      console.error('Enrich error:', err)
+      log.error('Enrich error:', err)
       toast.error('Failed to enrich staff profiles')
     } finally {
       setIsEnriching(false)

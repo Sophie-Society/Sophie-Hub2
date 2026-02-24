@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { createLogger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -85,6 +86,7 @@ interface PartnerMappingProps {
 type MappingTab = 'bigquery' | 'sheet'
 type AutoMatchConfidence = 'exact' | 'close' | 'sheet'
 
+const log = createLogger('partner-mapping')
 const easeOut: [number, number, number, number] = [0.22, 1, 0.36, 1]
 const PAGE_SIZE = 30
 
@@ -192,7 +194,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
       const json = await res.json()
       setClientNames(json.data?.clientNames || [])
     } catch (err) {
-      console.error('Error fetching client names:', err)
+      log.error('Error fetching client names:', err)
       setError('Failed to load BigQuery client identifiers')
     } finally {
       setIsLoadingClients(false)
@@ -213,7 +215,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
         }))
       )
     } catch (err) {
-      console.error('Error fetching partners:', err)
+      log.error('Error fetching partners:', err)
       setError('Failed to load partners')
     } finally {
       setIsLoadingPartners(false)
@@ -228,7 +230,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
       const json = await res.json()
       setMappings(json.data?.mappings || [])
     } catch (err) {
-      console.error('Error fetching mappings:', err)
+      log.error('Error fetching mappings:', err)
     } finally {
       setIsLoadingMappings(false)
     }
@@ -253,7 +255,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
         parsedRows: data?.sheet?.parsedRows || 0,
       })
     } catch (err) {
-      console.error('Error fetching sheet mappings:', err)
+      log.error('Error fetching sheet mappings:', err)
       setSheetError(err instanceof Error ? err.message : 'Failed to load reference sheet')
     } finally {
       setIsLoadingSheet(false)
@@ -444,7 +446,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
       onMappingChange?.()
       return newMapping || null
     } catch (err) {
-      console.error('Error saving mapping:', err)
+      log.error('Error saving mapping:', err)
       toast.error(err instanceof Error ? err.message : 'Failed to save mapping')
       return null
     } finally {
@@ -537,7 +539,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
       toast.success(`Removed mapping for "${mapping.external_id}"`)
       onMappingChange?.()
     } catch (err) {
-      console.error('Error deleting mapping:', err)
+      log.error('Error deleting mapping:', err)
       toast.error('Failed to remove mapping')
     }
   }
@@ -645,7 +647,7 @@ export function PartnerMapping({ onMappingChange }: PartnerMappingProps) {
         `Sheet sync complete: ${applied} applied (${inserted} new, ${updated} updated${conflicts > 0 ? `, ${conflicts} conflicts` : ''})`
       )
     } catch (err) {
-      console.error('Error syncing sheet mappings:', err)
+      log.error('Error syncing sheet mappings:', err)
       toast.error(err instanceof Error ? err.message : 'Failed to sync sheet mappings')
     } finally {
       setIsSyncingSheet(false)

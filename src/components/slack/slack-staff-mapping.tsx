@@ -19,6 +19,7 @@ import {
   Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { createLogger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -64,6 +65,7 @@ interface Breakdown {
   connect: number
 }
 
+const log = createLogger('slack-staff-mapping')
 const easeOut: [number, number, number, number] = [0.22, 1, 0.36, 1]
 const PAGE_SIZE = 30
 
@@ -109,7 +111,7 @@ export function SlackStaffMapping() {
         setSlackUsers(json.data?.users || [])
         setBreakdown(json.data?.breakdown || null)
       } catch (err) {
-        console.error('Error fetching Slack users:', err)
+        log.error('Error fetching Slack users:', err)
         setError('Failed to load Slack users. Is the bot token configured?')
       } finally {
         setIsLoadingUsers(false)
@@ -132,7 +134,7 @@ export function SlackStaffMapping() {
           email: s.email,
         })))
       } catch (err) {
-        console.error('Error fetching staff:', err)
+        log.error('Error fetching staff:', err)
       } finally {
         setIsLoadingStaff(false)
       }
@@ -227,7 +229,7 @@ export function SlackStaffMapping() {
         setBreakdown(refreshJson.data?.breakdown || null)
       }
     } catch (err) {
-      console.error('Auto-match error:', err)
+      log.error('Auto-match error:', err)
       toast.error('Auto-match failed')
     } finally {
       setIsAutoMatching(false)
@@ -312,7 +314,7 @@ export function SlackStaffMapping() {
 
       toast.success(`Enriched ${result.enriched} staff profiles (avatar, timezone, title)`)
     } catch (err) {
-      console.error('Enrich error:', err)
+      log.error('Enrich error:', err)
       toast.error('Failed to enrich staff profiles')
     } finally {
       setIsEnriching(false)
